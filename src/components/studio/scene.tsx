@@ -1014,9 +1014,9 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
   );
 }
 
-export default function Scene({ spec, interactive = true, spin = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; onReady?: () => void; onContextLost?: () => void }) {
+export default function Scene({ spec, interactive = true, spin = false, lite = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; onReady?: () => void; onContextLost?: () => void }) {
   const [reduced, setReduced] = useState(false);
-  const [quality] = useState(detectQuality);
+  const [quality] = useState(() => (lite ? LOW_QUALITY : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
 
   useEffect(() => {
