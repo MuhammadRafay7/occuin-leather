@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { Plus } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, GlobeHemisphereWest, Package, Scissors } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,12 +12,11 @@ import { Quality } from "@/components/product/quality";
 import { Reviews } from "@/components/product/reviews";
 import { SaveButton } from "@/components/product/save-button";
 import { BRAND, FREE_SHIPPING_CENTS, MAKING_NOTE, SHIPPING_METHODS, deliveryEstimate, money } from "@/lib/format";
-import { RETURN_DAYS } from "@/lib/policy";
 import { getOwnerKey } from "@/lib/server/auth";
 import { DEPARTMENTS, getProduct, getReviews, getWishlist, listProducts, listRelated } from "@/lib/server/catalog";
 import { categoryPath } from "@/lib/server/shop";
 import { compareSizes } from "@/lib/shop-params";
-import type { DesignSpec } from "@/lib/studio/spec";
+import { COLORS, METALS, THREADS, type DesignSpec } from "@/lib/studio/spec";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -35,24 +34,21 @@ async function imageSize(src: string) {
   }
 }
 
-function Fold({ title, children }: { title: string; children: ReactNode }) {
+function Column({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <details name="product-details" className="group border-b border-line">
-      <summary className="flex h-9 cursor-pointer list-none items-center justify-between text-[12px] hover:opacity-60 [&::-webkit-details-marker]:hidden">
-        {title}
-        <Plus size={12} aria-hidden className="transition-transform group-open:rotate-45" />
-      </summary>
-      <div className="pb-3 text-[12px] leading-[1.5] text-muted">{children}</div>
-    </details>
+    <section>
+      <h2 className="font-display text-xl text-invert-bg">{title}</h2>
+      <div className="mt-2 text-sm leading-[1.6] text-muted">{children}</div>
+    </section>
   );
 }
 
-function Spec({ label, children }: { label: string; children: ReactNode }) {
+function Assurance({ icon, label }: { icon: ReactNode; label: string }) {
   return (
-    <div className="grid grid-cols-[84px_1fr] gap-2 border-t border-line py-1.5">
-      <dt className="text-muted">{label}</dt>
-      <dd>{children}</dd>
-    </div>
+    <li className="flex items-center gap-1.5">
+      <span aria-hidden>{icon}</span>
+      {label}
+    </li>
   );
 }
 
@@ -122,68 +118,87 @@ export default async function ProductPage({ params }: Props) {
   };
 
   return (
-    <div className="pb-20 pt-[72px] lg:pb-0 lg:pt-[84px]">
+    <div className="pb-20 lg:pb-0">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
       />
 
-      <div className="mx-auto max-w-[1280px] lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10 lg:px-8 xl:gap-14">
-        <Gallery images={gallery} />
+      <section className="overflow-hidden bg-[radial-gradient(90%_90%_at_38%_46%,#3b5a50_0%,#20403a_46%,#0f211d_100%)] pt-[72px] lg:flex lg:min-h-[100dvh] lg:items-center lg:px-6 lg:pb-5 lg:pt-[84px]">
+        <div className="mx-auto grid w-full max-w-[1400px] gap-3 lg:h-[min(calc(100dvh-104px),740px)] lg:min-h-[600px] lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-5">
+          <div className="min-w-0">
+            <Gallery images={gallery} />
+          </div>
 
-        <div className="px-4 pt-5 lg:sticky lg:top-[84px] lg:max-h-[calc(100dvh-96px)] lg:self-start lg:overflow-y-auto lg:p-0 lg:pr-1 lg:[scrollbar-width:thin]">
-          <nav aria-label="Breadcrumb" className="mb-2 flex gap-1.5 text-[11px] text-muted">
+        <div className="glass relative z-10 mx-2 mb-2 flex flex-col rounded-[32px] p-5 lg:m-0 lg:p-7">
+          <nav aria-label="Breadcrumb" className="mb-2 flex gap-1.5 text-[12px] text-fg/75">
             <Link href={`/shop/${product.department}`} className="hover:text-fg">{DEPARTMENTS[product.department].name}</Link>
             <span aria-hidden>/</span>
             <Link href={categoryPath(product.department, product.categorySlug)} className="hover:text-fg">{product.categoryName}</Link>
           </nav>
-          <h1 className="font-display text-[26px] leading-[1.15] text-invert-bg">{product.name}</h1>
-          <p className="mt-2 text-[13px] leading-[1.5] text-muted">{product.description}</p>
+          <h1 className="font-display text-[38px] leading-[1.08] text-invert-bg">{product.name}</h1>
+          <p className="mt-2 text-sm leading-[1.5] text-fg/80">{product.description}</p>
 
-          <div className="mt-4">
+          <div className="mt-3 flex flex-1 flex-col">
             <Purchase
               slug={product.slug}
               options={options.map(({ id, color, size, priceCents, stock }) => ({ id, color, size, priceCents, stock }))}
               saveButton={<SaveButton productId={product.id} productName={product.name} saved={saved} />}
-              customise={
-                product.studioPreset ? (
-                  <Link href={`/studio?from=${product.slug}`} className="text-[12px] underline underline-offset-4 hover:opacity-60">
-                    Customise in the studio
-                  </Link>
-                ) : null
+              details={
+                <dl className="grid gap-1.5 border-t border-fg/10 pt-3 text-[13px]">
+                  {[["Material", product.composition.split(".")[0]!], ...(dimensions ? [["Size", dimensions]] : []), ...(included.length ? [["Carry", included.join(", ")]] : []), ...(product.studioPreset ? [["Hardware", METALS[product.studioPreset.hardware.metal].name], ["Stitching", THREADS[product.studioPreset.stitch.thread].name], ["Lining", COLORS[product.studioPreset.liningColor].name]] : [])].map(([label, value]) => (
+                    <div key={label} className="grid grid-cols-[72px_1fr] gap-2">
+                      <dt className="text-fg/70">{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
               }
             />
           </div>
 
-          <dl className="mt-4 border-b border-line text-[12px]">
-            <Spec label="Material">{product.composition}</Spec>
-            {dimensions ? <Spec label="Dimensions">{dimensions}</Spec> : null}
-            <Spec label="Delivery">{deliveryEstimate("standard")}</Spec>
-          </dl>
+          {product.studioPreset ? (
+            <Link href={`/studio?from=${product.slug}`} className="group mt-3 flex items-center justify-between gap-3 rounded-[22px] bg-invert-bg px-4 py-3 text-invert-fg transition active:scale-[0.99]">
+              <span>
+                <span className="block font-display text-xl leading-tight">Make it yours</span>
+                <span className="block text-[12px] text-invert-fg/80">Change the size, leather and stitching.</span>
+              </span>
+              <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-invert-fg text-invert-bg transition-transform duration-300 group-hover:translate-x-1">
+                <ArrowRight size={16} />
+              </span>
+            </Link>
+          ) : null}
 
-          <div className="mt-1">
-            <Fold title="Making and delivery">
-              <span className="block">{MAKING_NOTE}</span>
-              <span className="mt-2 block">{SHIPPING_METHODS.standard.label}: {deliveryEstimate("standard").toLowerCase()}, {money(SHIPPING_METHODS.standard.cents)}, free over {money(FREE_SHIPPING_CENTS)}.</span>
-              <span className="block">{SHIPPING_METHODS.express.label}: {deliveryEstimate("express").toLowerCase()}, {money(SHIPPING_METHODS.express.cents)}.</span>
-            </Fold>
-            {included.length ? (
-              <Fold title="What is included">
-                {included.map((item) => (
-                  <span key={item} className="block">{item}</span>
-                ))}
-              </Fold>
-            ) : null}
-            <Fold title="Care">
-              {CARE}{" "}
-              <Link href="/care" className="text-fg underline underline-offset-4">Care guide</Link>
-            </Fold>
-            <Fold title="Returns">
-              Return unworn pieces within {RETURN_DAYS} days.{" "}
-              <Link href="/shipping-returns" className="text-fg underline underline-offset-4">Full policy</Link>
-            </Fold>
-          </div>
+          <ul className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[12px]">
+            <Assurance icon={<Scissors size={14} />} label="Made to order" />
+            <Assurance icon={<Package size={14} />} label={deliveryEstimate("standard").replace("Arrives in ", "")} />
+            <Assurance icon={<GlobeHemisphereWest size={14} />} label="Ships worldwide" />
+          </ul>
         </div>
+        </div>
+      </section>
+
+      <div className="mx-auto mt-12 grid max-w-[1280px] gap-8 px-4 md:grid-cols-2 lg:grid-cols-4 lg:px-8">
+        <Column title="Details">
+          <span className="block">{product.composition}</span>
+          {dimensions ? <span className="mt-1 block">{dimensions}</span> : null}
+          {included.map((item) => (
+            <span key={item} className="mt-1 block">{item}</span>
+          ))}
+        </Column>
+        <Column title="Making and delivery">
+          <span className="block">{MAKING_NOTE}</span>
+          <span className="mt-2 block">{SHIPPING_METHODS.standard.label}: {deliveryEstimate("standard").toLowerCase()}, {money(SHIPPING_METHODS.standard.cents)}, free over {money(FREE_SHIPPING_CENTS)}.</span>
+          <span className="mt-1 block">{SHIPPING_METHODS.express.label}: {deliveryEstimate("express").toLowerCase()}, {money(SHIPPING_METHODS.express.cents)}.</span>
+        </Column>
+        <Column title="Care">
+          {CARE}{" "}
+          <Link href="/care" className="text-fg underline underline-offset-4">Care guide</Link>
+        </Column>
+        <Column title="Returns">
+          Every piece is made to order, so we only take back pieces that arrive faulty or differ from your order.{" "}
+          <Link href="/shipping-returns" className="text-fg underline underline-offset-4">Full policy</Link>
+        </Column>
       </div>
 
       <div className="mx-auto max-w-[1280px] px-4 lg:px-8">

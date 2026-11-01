@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageTitle } from "@/components/ui";
 import { FREE_SHIPPING_CENTS, MAKING_NOTE, SHIPPING_METHODS, money } from "@/lib/format";
-import { RETURN_DAYS } from "@/lib/policy";
 
 export const metadata: Metadata = {
   title: "Questions",
@@ -25,7 +24,7 @@ const QUESTIONS: { question: string; answer: ReactNode }[] = [
   },
   {
     question: "How do I return something?",
-    answer: <>Unworn pieces with tags can be returned within {RETURN_DAYS} days of delivery. <Link href="/shipping-returns">Read the policy</Link> or <Link href="/contact">write to us</Link> with your order number.</>,
+    answer: <>Every piece is made to order, so we only take back pieces that arrive faulty or differ from your order. <Link href="/shipping-returns">Read the policy</Link> or <Link href="/contact">write to us</Link> with your order number.</>,
   },
   {
     question: "How do I find my size?",

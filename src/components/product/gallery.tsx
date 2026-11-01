@@ -21,11 +21,11 @@ export function Gallery({ images }: { images: ZoomImage[] }) {
   }
 
   return (
-    <div className="relative lg:z-10 lg:bg-surface">
+    <div className="glass relative mx-2 rounded-[32px] !bg-white/20 lg:mx-0 lg:h-full">
       <div
         ref={rail}
         onScroll={track}
-        className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] lg:grid lg:justify-items-center lg:gap-1 lg:overflow-visible"
+        className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] lg:block lg:h-full lg:overflow-visible"
       >
         {images.map((image, index) => (
           <LensFrame key={image.src} image={image} priority={index === 0} ratio={frameRatio(image)} sizes={FRAME_SIZES} onOpen={() => setViewing(index)} />

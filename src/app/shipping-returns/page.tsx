@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Section, Sections } from "@/components/prose";
 import { PageTitle } from "@/components/ui";
 import { FREE_SHIPPING_CENTS, MAKING_NOTE, SHIPPING_METHODS, money } from "@/lib/format";
-import { RETURN_DAYS } from "@/lib/policy";
 
 export const metadata: Metadata = {
   title: "Shipping and returns",
@@ -29,11 +28,7 @@ export default function ShippingReturnsPage() {
           <p>Pieces you design in the studio are made to order. The lead time is shown with your price before you buy, and shipping starts once the piece is finished.</p>
         </Section>
         <Section title="Returns">
-          <p>Return unworn pieces with their tags within {RETURN_DAYS} days of delivery for a refund to your original payment method.</p>
-          <p>Return shipping to Pakistan is paid by you unless the piece arrived faulty. To start a return, write to us through the <Link href="/contact">contact page</Link> with your order number.</p>
-        </Section>
-        <Section title="What cannot be returned">
-          <p>Studio pieces are made for you, so they cannot be returned unless they arrive faulty or differ from your design.</p>
+          <p>Every piece is made to order, so we do not take back pieces because of a change of mind. If a piece arrives faulty or differs from your order, <Link href="/contact">write to us</Link> with your order number and we will put it right. This does not affect any rights you have by law.</p>
         </Section>
         <Section title="Faulty items">
           <p>If something arrives damaged or wrong, <Link href="/contact">tell us</Link> and include a photo. We will replace it or refund it.</p>

@@ -28,10 +28,10 @@ export function SaveButton({ productId, productName, saved, removeLabel = "Saved
         disabled={pending}
         aria-pressed={shown}
         aria-label={shown ? `Remove ${productName} from saved items` : `Save ${productName}`}
-        className="inline-flex h-8 items-center gap-1.5 text-[12px] hover:opacity-60"
+        className="grid size-12 shrink-0 place-items-center rounded-full border border-fg/25 transition hover:border-fg active:scale-[0.96]"
       >
-        <Heart size={15} weight={shown ? "fill" : "regular"} aria-hidden />
-        {shown ? removeLabel : "Save"}
+        <Heart size={20} weight={shown ? "fill" : "regular"} aria-hidden />
+        <span className="sr-only">{shown ? removeLabel : "Save"}</span>
       </button>
       {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
     </div>

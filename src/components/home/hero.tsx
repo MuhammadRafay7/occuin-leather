@@ -1,14 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useWebgl } from "@/components/studio/viewport";
 import { buttonClass } from "@/components/ui";
 import { money } from "@/lib/format";
 import { PRESETS } from "@/lib/studio/presets";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { COLORS, type ColorKey, type DesignSpec } from "@/lib/studio/spec";
+
+const Scene = dynamic(() => import("@/components/studio/scene"), { ssr: false });
 
 const FORMS = [
   { key: "tote", label: "Tote", slug: "cabas-38" },
@@ -26,8 +29,10 @@ function dress(spec: DesignSpec, color: ColorKey): DesignSpec {
 export function Hero() {
   const [form, setForm] = useState<(typeof FORMS)[number]>(FORMS[0]);
   const [color, setColor] = useState<ColorKey>("cognac");
-  const price = useMemo(() => quoteDesign(dress(PRESETS[form.key], color)).totalCents, [form, color]);
-  const image = `/images/hero/${form.key}-${color}.webp`;
+  const [ready, setReady] = useState(false);
+  const { available, lost } = useWebgl();
+  const spec = useMemo(() => dress(PRESETS[form.key], color), [form, color]);
+  const price = quoteDesign(spec).totalCents;
 
   return (
     <section className="relative h-[100dvh] min-h-[640px] overflow-hidden bg-[radial-gradient(90%_80%_at_50%_42%,#3b5a50_0%,#20403a_44%,#0f211d_100%)]">
@@ -37,18 +42,19 @@ export function Hero() {
       </h1>
 
       <div className="absolute inset-x-0 bottom-[10%] top-[8%]">
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={image}
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.02 }}
-            transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-            className="absolute inset-0"
-          >
-            <Image src={image} alt={`${COLORS[color].name} leather ${form.label.toLowerCase()} bag`} fill preload sizes="(min-width: 768px) 70vw, 100vw" className="object-contain" />
-          </motion.div>
-        </AnimatePresence>
+        <Image
+          src="/images/hero/tote-cognac.webp"
+          alt="A cognac leather tote"
+          fill
+          preload
+          sizes="(min-width: 768px) 70vw, 100vw"
+          className={`object-contain transition-opacity duration-500 ${ready ? "opacity-0" : "opacity-100"}`}
+        />
+        {available ? (
+          <div className={`absolute inset-0 touch-pan-y transition-opacity duration-500 max-md:pointer-events-none ${ready ? "opacity-100" : "opacity-0"}`}>
+            <Scene spec={spec} spin onReady={() => setReady(true)} onContextLost={lost} />
+          </div>
+        ) : null}
       </div>
 
       <div className="glass-panel absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-[28px] p-2 md:inset-x-auto md:left-1/2 md:bottom-6 md:-translate-x-1/2 md:flex-nowrap md:rounded-full md:pl-4">

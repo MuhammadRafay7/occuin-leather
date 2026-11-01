@@ -3,7 +3,6 @@ import Link from "next/link";
 import { LegalTemplateNotice, Section, Sections } from "@/components/prose";
 import { PageTitle } from "@/components/ui";
 import { BRAND } from "@/lib/format";
-import { RETURN_DAYS } from "@/lib/policy";
 
 export const metadata: Metadata = {
   title: "Terms",
@@ -29,7 +28,7 @@ export default function TermsPage() {
           <p>Delivery times are estimates. <Link href="/shipping-returns">Shipping and returns</Link> sets out the current options and costs.</p>
         </Section>
         <Section title="Returns">
-          <p>You can return unworn pieces with tags within {RETURN_DAYS} days of delivery. This does not affect any rights you have by law.</p>
+          <p>Every piece is made to order. You can return a piece if it arrives faulty or differs from your order. This does not affect any rights you have by law.</p>
         </Section>
         <Section title="Studio pieces">
           <p>Studio pieces are made to your design, so they cannot be returned unless they are faulty or differ from your design. You must not submit monograms or designs that use another person&rsquo;s trademark or rights.</p>
