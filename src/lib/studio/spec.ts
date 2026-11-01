@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const FINISHES = {
-  box: { name: "Box calf", note: "Dense, glazed, ages to a deep shine", grain: "smooth", roughness: 0.34, clearcoat: 0.45, sheen: 0, centsPerDm2: 190 },
+  box: { name: "Box calf", note: "Dense, glazed, ages to a deep shine", grain: "smooth", roughness: 0.5, clearcoat: 0.12, sheen: 0, centsPerDm2: 190 },
   pebble: { name: "Pebbled bull", note: "Soft tumbled grain, forgiving and supple", grain: "pebble", roughness: 0.56, clearcoat: 0.08, sheen: 0, centsPerDm2: 170 },
   saffiano: { name: "Saffiano", note: "Cross-hatched and scratch resistant", grain: "saffiano", roughness: 0.42, clearcoat: 0.25, sheen: 0, centsPerDm2: 210 },
-  croc: { name: "Croc-embossed calf", note: "Hand-plated scale, polished by agate", grain: "croc", roughness: 0.3, clearcoat: 0.6, sheen: 0, centsPerDm2: 300 },
+  croc: { name: "Croc-embossed calf", note: "Hand-plated scale, polished by agate", grain: "croc", roughness: 0.34, clearcoat: 0.4, sheen: 0, centsPerDm2: 300 },
   suede: { name: "Goat suede", note: "Velvet nap, brushed by hand", grain: "suede", roughness: 0.95, clearcoat: 0, sheen: 1, centsPerDm2: 180 },
 } as const;
 

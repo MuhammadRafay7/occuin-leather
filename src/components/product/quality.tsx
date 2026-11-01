@@ -1,10 +1,7 @@
 import Image from "next/image";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 const MACROS = [
   { src: "/images/hero/macro-grain.webp", alt: "Close-up of full-grain leather surface", label: "Grain" },
-  { src: "/images/hero/macro-stitch.webp", alt: "Close-up of hand stitching along a leather edge", label: "Stitch" },
 ];
 
 const POINTS = [
@@ -14,7 +11,7 @@ const POINTS = [
 ];
 
 export function Quality() {
-  const macros = MACROS.filter(({ src }) => existsSync(join(process.cwd(), "public", src)));
+  const macros = MACROS;
 
   return (
     <section aria-labelledby="quality" className="mt-14 border-t border-line pt-8">

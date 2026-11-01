@@ -16,7 +16,7 @@ const FORMS = [
   { key: "crossbody", label: "Saddle", slug: "selle-22" },
   { key: "weekender", label: "Weekender", slug: "grand-tour-50" },
 ] as const;
-const LEATHERS: ColorKey[] = ["cognac", "noir", "bordeaux", "forest", "tan"];
+const LEATHERS: ColorKey[] = ["cognac", "noir", "bordeaux", "navy", "tan"];
 
 function dress(spec: DesignSpec, color: ColorKey): DesignSpec {
   const { primary, gusset } = spec.panels;

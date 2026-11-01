@@ -16,7 +16,7 @@ const MACRO_WIDTH = Number(process.env.MACRO_WIDTH ?? 2400);
 const MACRO_HEIGHT = Number(process.env.MACRO_HEIGHT ?? 1600);
 const STUDIO_GREY: [number, number, number] = [241, 241, 241];
 const HERO_FORMS = ["tote", "satchel", "crossbody", "weekender"] as const;
-const HERO_COLORS: ColorKey[] = ["cognac", "noir", "bordeaux", "forest", "tan"];
+const HERO_COLORS: ColorKey[] = ["cognac", "noir", "bordeaux", "navy", "tan"];
 
 type Still = {
   spec: DesignSpec;

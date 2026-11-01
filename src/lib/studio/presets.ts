@@ -39,7 +39,7 @@ export const PRESETS = {
   blank,
   tote: preset({
     name: "Cabas 38",
-    form: { width: 380, height: 300, depth: 150, taper: 1.14, topArc: -0.2, cornerBottom: 16, cornerTop: 6, softness: 0.45, gusset: "bellows" },
+    form: { width: 380, height: 300, depth: 150, taper: 1.14, topArc: -0.2, cornerBottom: 16, cornerTop: 6, softness: 0.12, gusset: "bellows" },
     panels: { primary: hide("pebble", "cognac"), gusset: hide("pebble", "cognac") },
     carry: { handles: 2, handleDrop: 210, handleWidth: 20 },
     hardware: { metal: "gold", feet: true },
@@ -50,7 +50,7 @@ export const PRESETS = {
   satchel: preset({
     name: "Nocturne 28",
     form: { width: 280, height: 210, depth: 120, taper: 0.86, topArc: 0.12, cornerBottom: 28, cornerTop: 34, softness: 0.15 },
-    panels: { primary: hide("croc", "noir"), gusset: hide("box", "noir") },
+    panels: { primary: hide("croc", "noir"), gusset: hide("pebble", "noir") },
     closure: { type: "flap", flapShape: "straight", flapLength: 0.46, clasp: "turnlock" },
     carry: { handles: 1, handleDrop: 90, handleWidth: 14, strap: true, strapLength: 1000, strapWidth: 16 },
     hardware: { metal: "gold", feet: true },
