@@ -1,14 +1,18 @@
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { PRODUCT_TYPES, type ProductType } from "../bespoke/design";
+import { balanceBuyable, balanceCents, bespokeBuyable, bespokeRef, depositCents } from "../bespoke/status";
+import { cartTotals, discountableCents, type PricedLine } from "../cart-totals";
+import { money } from "../format";
 import { designSpecSchema } from "../studio/spec";
 import { quoteDesign } from "../studio/pricing";
 import { db, schema } from "./db";
 
-const { cartItems, carts, designs, products, promoCodes, variants } = schema;
+const { bespokeRequests, cartItems, carts, designs, products, promoCodes, variants } = schema;
 const MAX_QUANTITY = 10;
 
 export type CartLine = {
   id: string;
-  kind: "product" | "design";
+  kind: "product" | "design" | "bespoke";
   name: string;
   detail: string;
   image: string | null;
@@ -19,6 +23,9 @@ export type CartLine = {
 };
 
 export type CartView = {
+  shippingWaived: boolean;
+  shippingBasisCents: number;
+  promoBaseCents: number;
   lines: CartLine[];
   count: number;
   subtotalCents: number;
@@ -27,10 +34,14 @@ export type CartView = {
   promoError: string | null;
 };
 
-const EMPTY: CartView = { lines: [], count: 0, subtotalCents: 0, discountCents: 0, promoCode: null, promoError: null };
+const EMPTY: CartView = { shippingWaived: false, shippingBasisCents: 0, promoBaseCents: 0, lines: [], count: 0, subtotalCents: 0, discountCents: 0, promoCode: null, promoError: null };
 
-export async function findPromo(code: string, subtotalCents: number) {
-  const [promo] = await db
+export function bespokeLineName(request: { design: { name: string }; productType: string }) {
+  return request.design.name || `Bespoke ${(PRODUCT_TYPES[request.productType as ProductType] ?? "piece").toLowerCase()}`;
+}
+
+export async function findPromo(code: string, baseCents: number, source: Pick<typeof db, "select"> = db) {
+  const [promo] = await source
     .select()
     .from(promoCodes)
     .where(
@@ -41,7 +52,8 @@ export async function findPromo(code: string, subtotalCents: number) {
       ),
     );
   if (!promo) return { error: "That code is not valid." } as const;
-  if (subtotalCents < promo.minSubtotalCents) return { error: "Your bag does not reach the minimum for that code." } as const;
+  if (promo.maxUses !== null && promo.timesUsed >= promo.maxUses) return { error: "That code is not valid." } as const;
+  if (baseCents < promo.minSubtotalCents) return { error: "Your bag does not reach the minimum for that code." } as const;
   return { promo } as const;
 }
 
@@ -50,15 +62,34 @@ export async function getCart(ownerKey: string | null): Promise<CartView> {
   const [cart] = await db.select().from(carts).where(eq(carts.ownerKey, ownerKey));
   if (!cart) return EMPTY;
   const rows = await db
-    .select({ item: cartItems, variant: variants, product: products, design: designs })
+    .select({ item: cartItems, variant: variants, product: products, design: designs, bespoke: bespokeRequests })
     .from(cartItems)
     .leftJoin(variants, eq(variants.id, cartItems.variantId))
     .leftJoin(products, eq(products.id, variants.productId))
     .leftJoin(designs, eq(designs.id, cartItems.designId))
+    .leftJoin(bespokeRequests, eq(bespokeRequests.id, cartItems.bespokeRequestId))
     .where(eq(cartItems.cartId, cart.id))
     .orderBy(cartItems.id);
 
-  const lines = rows.flatMap(({ item, variant, product, design }): CartLine[] => {
+  const lines = rows.flatMap(({ item, variant, product, design, bespoke }): CartLine[] => {
+    if (bespoke) {
+      const quoted = bespoke.quotedPriceCents ?? 0;
+      const deposit = depositCents(quoted, bespoke.depositPercent);
+      const balance = item.bespokePart === "balance";
+      const reference = bespokeRef(bespoke.number);
+      const depositDetail = deposit < quoted ? `${bespoke.depositPercent}% deposit for bespoke design ${reference}. Balance ${money(quoted - deposit)} before shipping.` : `Full payment for bespoke design ${reference}`;
+      return [{
+        id: item.id,
+        kind: "bespoke",
+        name: bespokeLineName(bespoke),
+        detail: balance ? `Balance for bespoke design ${reference}` : depositDetail,
+        image: `/api/bespoke/preview/${bespoke.id}`,
+        href: `/bespoke/mine/${bespoke.id}`,
+        unitCents: balance ? quoted - deposit : deposit,
+        quantity: 1,
+        available: (balance ? balanceBuyable(bespoke) : bespokeBuyable(bespoke)) ? 1 : 0,
+      }];
+    }
     if (variant && product) {
       return [{
         id: item.id,
@@ -89,13 +120,24 @@ export async function getCart(ownerKey: string | null): Promise<CartView> {
     }];
   });
 
-  const subtotalCents = lines.reduce((sum, line) => sum + line.unitCents * line.quantity, 0);
-  const found = cart.promoCode ? await findPromo(cart.promoCode, subtotalCents) : null;
+  const priced = rows.flatMap(({ item, bespoke }): PricedLine[] => {
+    const line = lines.find((entry) => entry.id === item.id);
+    if (!line) return [];
+    if (!bespoke) return [{ amountCents: line.unitCents * line.quantity, bespoke: null }];
+    const quoted = bespoke.quotedPriceCents ?? 0;
+    return [{ amountCents: line.unitCents, bespoke: { part: item.bespokePart === "balance" ? "balance" : "deposit", depositCents: depositCents(quoted, bespoke.depositPercent), balanceCents: balanceCents(quoted, bespoke.depositPercent) } }];
+  });
+  const promoBaseCents = discountableCents(priced);
+  const found = cart.promoCode && promoBaseCents > 0 ? await findPromo(cart.promoCode, promoBaseCents) : null;
+  const { subtotalCents, discountCents, shippingBasisCents, shippingWaived } = cartTotals(priced, found && "promo" in found ? found.promo!.percentOff : 0);
   return {
+    shippingWaived,
+    shippingBasisCents,
+    promoBaseCents,
     lines,
     count: lines.reduce((sum, line) => sum + line.quantity, 0),
     subtotalCents,
-    discountCents: found && "promo" in found ? Math.round((subtotalCents * found.promo!.percentOff) / 100) : 0,
+    discountCents,
     promoCode: cart.promoCode,
     promoError: found && "error" in found ? (found.error ?? null) : null,
   };
@@ -143,6 +185,11 @@ export async function addDesign(ownerKey: string, designId: string) {
   return { ok: true };
 }
 
+export async function addBespoke(ownerKey: string, requestId: string, part: "deposit" | "balance" = "deposit") {
+  const cart = await openCart(ownerKey);
+  await db.insert(cartItems).values({ cartId: cart.id, bespokeRequestId: requestId, bespokePart: part, quantity: 1 }).onConflictDoNothing();
+}
+
 export async function setQuantity(ownerKey: string, itemId: string, quantity: number) {
   const [cart] = await db.select().from(carts).where(eq(carts.ownerKey, ownerKey));
   if (!cart) return;
@@ -151,7 +198,10 @@ export async function setQuantity(ownerKey: string, itemId: string, quantity: nu
     await db.delete(cartItems).where(scope);
     return;
   }
-  await db.update(cartItems).set({ quantity: Math.min(quantity, MAX_QUANTITY) }).where(scope);
+  await db
+    .update(cartItems)
+    .set({ quantity: sql`case when ${cartItems.bespokeRequestId} is null then ${Math.min(quantity, MAX_QUANTITY)}::int else 1 end` })
+    .where(scope);
 }
 
 export async function setPromo(ownerKey: string, code: string | null) {
@@ -161,7 +211,8 @@ export async function setPromo(ownerKey: string, code: string | null) {
     return { ok: true };
   }
   const view = await getCart(ownerKey);
-  const found = await findPromo(code, view.subtotalCents);
+  if (view.lines.length && !view.promoBaseCents) return { error: "Promo codes do not apply to bespoke deposits or balances." };
+  const found = await findPromo(code, view.promoBaseCents);
   if ("error" in found) return { error: found.error };
   await db.update(carts).set({ promoCode: found.promo!.code }).where(eq(carts.id, cart.id));
   return { ok: true };

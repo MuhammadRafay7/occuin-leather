@@ -1,9 +1,9 @@
 "use server";
 
 import { and, desc, eq } from "drizzle-orm";
-import { headers } from "next/headers";
 import { z } from "zod";
 import { ensureOwnerKey, getOwnerKey, hitRateLimit } from "@/lib/server/auth";
+import { clientIp } from "@/lib/server/client-ip";
 import { db, schema } from "@/lib/server/db";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { designSpecSchema, type DesignSpec } from "@/lib/studio/spec";
@@ -18,6 +18,8 @@ const RATE_WINDOW_SECONDS = 3600;
 const MAX_SAVES_PER_OWNER = 40;
 const MAX_SAVES_PER_ADDRESS = 120;
 const MAX_LISTED = 50;
+const MAX_KEPT = 100;
+const TOO_MANY_KEPT = "You can keep up to 100 designs. Delete one first.";
 
 const id = z.uuid();
 
@@ -36,10 +38,9 @@ function decodePreview(dataUrl: unknown) {
 }
 
 async function overLimit(owner: string) {
-  const forwarded = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
   const [byOwner, byAddress] = await Promise.all([
     hitRateLimit(`design-save:${owner}`, MAX_SAVES_PER_OWNER, RATE_WINDOW_SECONDS),
-    hitRateLimit(`design-save-ip:${forwarded || "unknown"}`, MAX_SAVES_PER_ADDRESS, RATE_WINDOW_SECONDS),
+    hitRateLimit(`design-save-ip:${await clientIp()}`, MAX_SAVES_PER_ADDRESS, RATE_WINDOW_SECONDS),
   ]);
   return byOwner || byAddress;
 }
@@ -57,6 +58,7 @@ export async function saveDesign(input: { id?: string | null; spec: unknown; pre
   const spec = parsed.data;
   const priceCents = quoteDesign(spec).totalCents;
   const existingId = id.safeParse(input.id).data;
+  if (!existingId && (await db.$count(designs, eq(designs.ownerKey, owner))) >= MAX_KEPT) return { ok: false, error: TOO_MANY_KEPT };
 
   const savedId = await db.transaction(async (tx) => {
     const [updated] = existingId

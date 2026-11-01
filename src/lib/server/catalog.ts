@@ -1,3 +1,4 @@
+import { publicName } from "../format";
 import { and, asc, avg, count, desc, eq, inArray } from "drizzle-orm";
 import { cache } from "react";
 import { db, schema } from "./db";
@@ -131,7 +132,7 @@ export async function getReviews(productId: string) {
     .innerJoin(users, eq(users.id, reviews.userId))
     .where(eq(reviews.productId, productId))
     .orderBy(desc(reviews.createdAt));
-  return { average: summary?.average ? Number(summary.average) : 0, total: summary?.total ?? 0, items };
+  return { average: summary?.average ? Number(summary.average) : 0, total: summary?.total ?? 0, items: items.map((item) => ({ ...item, author: publicName(item.author) })) };
 }
 
 export async function getWishlist(ownerKey: string | null) {

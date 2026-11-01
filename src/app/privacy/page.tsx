@@ -2,15 +2,13 @@ import type { Metadata } from "next";
 import { LegalTemplateNotice, Section, Sections } from "@/components/prose";
 import { PageTitle } from "@/components/ui";
 import { BRAND } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Privacy",
-  description: "What personal data OCCUIN collects and how it is used.",
-};
+export const metadata: Metadata = pageMeta("/privacy");
 
 export default function PrivacyPage() {
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <PageTitle>Privacy</PageTitle>
       <LegalTemplateNotice />
       <Sections>
@@ -45,7 +43,7 @@ export default function PrivacyPage() {
           <p>We use one cookie to keep you signed in and one to hold the bag and saved items of guests. Your browser also stores your choice of grid columns and that you have seen the cookie notice. We do not use advertising cookies.</p>
         </Section>
         <Section title="Keeping and deleting data">
-          <p>We keep order records for as long as the law requires. You can ask us for a copy of your data, or ask us to correct or delete it, by writing to the address above.</p>
+          <p>You can delete your account from your profile page. We keep order records for as long as the law requires, even after an account is deleted. You can ask us for a copy of your data, or ask us to correct or delete it, by writing to the address above.</p>
         </Section>
         <Section title="Changes">
           <p>If we change this policy, we will update this page.</p>

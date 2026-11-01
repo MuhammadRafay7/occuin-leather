@@ -3,7 +3,7 @@ import { PRICE_RANGES, SORTS, shopHref, toggled, type ShopState } from "@/lib/sh
 
 type Props = { path: string; state: ShopState; colors: string[]; sizes: string[] };
 
-const LINK = "text-[13px] underline underline-offset-4";
+const LINK = "text-[13px] text-[#f4efe6] underline underline-offset-4";
 
 export function FilterLinks({ path, state, colors, sizes }: Props) {
   return (

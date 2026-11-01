@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebgl } from "@/components/studio/viewport";
 import { buttonClass } from "@/components/ui";
 import { money } from "@/lib/format";
@@ -38,48 +38,58 @@ export function Hero() {
   const [form, setForm] = useState<(typeof FORMS)[number]>(FORMS[0]);
   const [color, setColor] = useState<ColorKey>("cognac");
   const [ready, setReady] = useState(false);
+  const [offscreen, setOffscreen] = useState(false);
+  const section = useRef<HTMLElement>(null);
   const { available, lost } = useWebgl();
   const spec = useMemo(() => dress(PRESETS[form.key], color), [form, color]);
   const price = quoteDesign(spec).totalCents;
 
+  useEffect(() => {
+    const node = section.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => setOffscreen(!entry?.isIntersecting));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section className="relative h-[100dvh] min-h-[640px] overflow-hidden bg-[radial-gradient(90%_80%_at_50%_42%,#3b5a50_0%,#20403a_44%,#0f211d_100%)]">
+    <section ref={section} className="relative h-svh min-h-[600px] overflow-hidden bg-[radial-gradient(90%_80%_at_50%_42%,#3b5a50_0%,#20403a_44%,#0f211d_100%)] md:h-dvh md:min-h-[640px] short:h-svh short:min-h-[320px]">
       {HERO_FILES.map((file) => (
         <link key={file.href} rel="preload" href={file.href} as={file.as} crossOrigin="anonymous" />
       ))}
       <h1 aria-label="Make it yours" className="pointer-events-none font-display text-[#f4efe6]">
-        <span aria-hidden="true" className="absolute left-4 top-20 block text-[23vw] leading-[1.05] md:left-8 md:top-16 md:text-[13.5vw]">Make it</span>
-        <span aria-hidden="true" className="absolute bottom-44 right-4 block pb-2 text-[23vw] italic leading-[1.1] md:bottom-24 md:right-8 md:text-[13.5vw]">yours.</span>
+        <span aria-hidden="true" className="absolute left-4 top-[calc(5rem+env(safe-area-inset-top))] block text-[23vw] leading-[1.05] md:left-8 md:top-16 md:text-[13.5vw] short:left-[max(1.5rem,env(safe-area-inset-left))] short:top-[4.5rem] short:text-[22svh]">Make it</span>
+        <span aria-hidden="true" className="absolute bottom-[calc(10.25rem+env(safe-area-inset-bottom)+var(--cookie-lift,0px))] right-4 block pb-2 text-[23vw] italic leading-[1.1] md:bottom-[calc(6rem+var(--cookie-lift,0px))] md:right-8 md:text-[13.5vw] short:bottom-auto short:left-[max(4.5rem,calc(env(safe-area-inset-left)+3rem))] short:right-auto short:top-[calc(4.5rem+22svh)] short:pb-0 short:text-[22svh]">yours.</span>
       </h1>
 
-      <div className="absolute inset-x-0 bottom-[10%] top-[8%]">
+      <div className="absolute inset-x-0 bottom-[calc(10%+var(--cookie-lift,0px))] top-[8%] short:bottom-16 short:left-[38%] short:top-14">
         {available === false ? (
           <Image src="/images/hero/tote-cognac.webp" alt="A cognac leather tote" fill sizes="(min-width: 768px) 70vw, 100vw" className="object-contain" />
         ) : null}
         {available ? (
-          <div className={`absolute inset-0 touch-pan-y transition duration-300 ease-out max-md:pointer-events-none ${ready ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}>
-            <Scene spec={spec} spin lite onReady={() => setReady(true)} onContextLost={lost} />
+          <div className={`absolute inset-0 touch-pan-y transition duration-300 ease-out ${ready ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}>
+            <Scene spec={spec} spin lite paused={offscreen} onReady={() => setReady(true)} onContextLost={lost} />
           </div>
         ) : null}
       </div>
 
-      <div className="glass-panel absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-[28px] p-2 md:inset-x-auto md:left-1/2 md:bottom-6 md:-translate-x-1/2 md:flex-nowrap md:rounded-full md:pl-4">
-        <div role="group" aria-label="Choose a form" className="flex items-center">
+      <div className="glass-panel absolute bottom-[calc(max(12px,env(safe-area-inset-bottom))+var(--cookie-lift,0px))] left-[max(12px,env(safe-area-inset-left))] right-[max(12px,env(safe-area-inset-right))] grid gap-1 rounded-[28px] p-2 md:bottom-[calc(24px+var(--cookie-lift,0px))] md:left-1/2 md:right-auto md:flex md:-translate-x-1/2 md:flex-nowrap md:items-center md:justify-center md:gap-3 md:rounded-full md:pl-4 short:bottom-[calc(8px+var(--cookie-lift,0px))] short:flex short:flex-nowrap short:items-center short:justify-between short:gap-1 short:rounded-full short:py-1.5">
+        <div role="group" aria-label="Choose a form" className="flex items-center justify-between md:justify-start">
           {FORMS.map((item) => (
             <button
               key={item.key}
               type="button"
               aria-pressed={form.key === item.key}
               onClick={() => setForm(item)}
-              className="h-10 whitespace-nowrap rounded-full px-3 text-[13px] transition-colors hover:bg-white/50 aria-pressed:bg-white/80 aria-pressed:shadow-[inset_0_1px_0_white,0_2px_6px_rgb(23_49_42/0.12)]"
+              className="h-11 whitespace-nowrap rounded-full px-3 text-[13px] transition-colors hover:bg-white/50 aria-pressed:bg-white/80 md:h-10 aria-pressed:shadow-[inset_0_1px_0_white,0_2px_6px_rgb(23_49_42/0.12)]"
             >
               {item.label}
             </button>
           ))}
         </div>
-        <div role="group" aria-label="Choose a leather" className="flex items-center">
+        <div role="group" aria-label="Choose a leather" className="flex items-center justify-between md:justify-start">
           {LEATHERS.map((key) => (
-            <button key={key} type="button" aria-pressed={color === key} aria-label={COLORS[key].name} title={COLORS[key].name} onClick={() => setColor(key)} className="grid h-10 w-9 place-items-center">
+            <button key={key} type="button" aria-pressed={color === key} aria-label={COLORS[key].name} title={COLORS[key].name} onClick={() => setColor(key)} className="grid h-11 w-12 place-items-center md:h-10 md:w-9 short:h-10 short:w-8">
               <span
                 style={{ backgroundColor: COLORS[key].hex }}
                 className={`block h-6 w-6 rounded-full shadow-[inset_0_1px_1px_rgb(255_255_255/0.35)] transition-transform ${color === key ? "scale-110 outline-2 outline-offset-2 outline-invert-bg" : "hover:scale-110"}`}
@@ -87,8 +97,11 @@ export function Hero() {
             </button>
           ))}
         </div>
-        <p aria-live="polite" className="whitespace-nowrap px-2 text-sm tabular-nums">{money(price)}</p>
-        <Link href={`/studio?from=${form.slug}&color=${color}`} className={buttonClass("solid", "h-10!")}>Design yours</Link>
+        <p aria-live="polite" className="hidden whitespace-nowrap px-2 text-sm tabular-nums md:block short:block">{money(price)}</p>
+        <Link href={`/studio?from=${form.slug}&color=${color}`} className={buttonClass("solid", "h-11! justify-between! gap-4 px-5 md:h-10! md:justify-center! md:px-7 short:h-10! short:px-4 short:md:px-7")}>
+          Design yours
+          <span aria-hidden className="tabular-nums md:hidden short:hidden">{money(price)}</span>
+        </Link>
       </div>
     </section>
   );

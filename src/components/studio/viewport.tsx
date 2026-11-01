@@ -22,7 +22,7 @@ function CanvasSkeleton() {
   return (
     <div className="grid h-full place-items-center" role="status">
       <div className="grid justify-items-center gap-4">
-        <p className="text-xs uppercase tracking-[0.14em] text-muted">Preparing the atelier</p>
+        <p className="text-sm text-muted">Loading the bag</p>
       </div>
     </div>
   );
@@ -34,7 +34,7 @@ function WebglFallback() {
       <div className="grid max-w-[38ch] justify-items-center gap-3">
         <h2 className="font-display text-2xl">The live preview is unavailable</h2>
         <p className="text-sm text-muted">
-          This browser cannot display 3D. Every choice, the price and saving still work, and our atelier will make the piece exactly as specified.
+          This browser cannot display 3D. Every choice, the price and saving still work, and we make the piece to the same specification.
         </p>
       </div>
     </div>

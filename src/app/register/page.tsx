@@ -13,7 +13,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   if (await getUser()) redirect(next);
 
   return (
-    <div className="mx-auto max-w-[460px] px-4 pb-24 pt-24 md:px-8">
+    <div className="mx-auto max-w-[460px] px-page pb-24 pt-header">
       <PageTitle sub="Your bag, saved items and designs carry over.">Create an account</PageTitle>
       <div className="grid gap-6">
         <RegisterForm next={next} />

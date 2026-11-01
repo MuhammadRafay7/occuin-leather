@@ -3,11 +3,11 @@ import { COLORS, FINISHES, METALS, PATTERNS, THREADS, type DesignSpec } from "./
 export type PriceLine = { label: string; cents: number };
 export type DesignQuote = { lines: PriceLine[]; totalCents: number; leadWeeks: number; areaDm2: number };
 
-const ATELIER_BASE_CENTS = 1500;
-const LABOUR_CENTS_PER_HOUR = 700;
-const WASTAGE = 1.35;
-const MARGIN = 1.6;
-const ROUND_TO_CENTS = 500;
+export const ATELIER_BASE_CENTS = 1500;
+export const LABOUR_CENTS_PER_HOUR = 700;
+export const WASTAGE = 1.35;
+export const MARGIN = 1.6;
+export const ROUND_TO_CENTS = 500;
 
 function panelAreas(spec: DesignSpec) {
   const { width, height, depth, taper } = spec.form;
@@ -58,7 +58,7 @@ export function quoteDesign(spec: DesignSpec): DesignQuote {
   const monogram = spec.monogram.text.trim() ? (spec.monogram.technique === "blind" ? 800 : 1500) : 0;
 
   const lines: PriceLine[] = [
-    { label: "Atelier setup and pattern cutting", cents: ATELIER_BASE_CENTS },
+    { label: "Pattern cutting and setup", cents: ATELIER_BASE_CENTS },
     { label: `Leather, ${(faces + gusset).toFixed(1)} dm²`, cents: Math.round(leather * MARGIN) },
     { label: `Handwork, ${hours.toFixed(1)} hours`, cents: Math.round(hours * LABOUR_CENTS_PER_HOUR * MARGIN) },
   ];

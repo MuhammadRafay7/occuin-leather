@@ -76,7 +76,7 @@ export async function register(_: FormState, data: FormData): Promise<FormState>
   const values = { name: text(data, "name"), email: text(data, "email") };
   const parsed = registerSchema.safeParse({ ...values, password: text(data, "password") });
   if (!parsed.success) return { fields: fieldErrors(parsed.error), values };
-  if (await hitRateLimit(`register:ip:${await clientIp()}`, 10, 3600)) return { error: TOO_MANY, values };
+  if (await hitRateLimit(`register:ip:${await clientIp()}`, 5, 3600)) return { error: TOO_MANY, values };
 
   const { name, email, password } = parsed.data;
   const passwordHash = await hashPassword(password);
@@ -84,7 +84,18 @@ export async function register(_: FormState, data: FormData): Promise<FormState>
   const [user] = taken
     ? []
     : await db.insert(users).values({ name, email, passwordHash }).onConflictDoNothing().returning({ id: users.id });
-  if (!user) return { error: "We could not create that account. If you already have one, sign in or reset your password.", values };
+  if (!user) {
+    if (taken && !(await hitRateLimit(`register:notice:${tokenHash(email)}`, 1, 86_400))) {
+      after(() =>
+        sendMail({
+          to: taken.email,
+          subject: "Someone tried to register with your email",
+          text: "Someone tried to create an OCCUIN account with this email, but you already have one. If this was you, sign in or reset your password. If not, you can ignore this email.",
+        }).catch(() => false),
+      );
+    }
+    return { error: "We could not create that account. If you already have one, sign in or reset your password.", values };
+  }
 
   return enterSession(user.id, data.get("next"));
 }

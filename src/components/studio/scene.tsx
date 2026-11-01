@@ -54,13 +54,17 @@ type Quality = { suffix: string; paint: number; flap: number; detail: number; hd
 const STANDARD_QUALITY: Quality = { suffix: "", paint: 2048, flap: 1536, detail: 1, hdri: "/hdri/studio_small_09_2k.hdr", shadow: 2048, dpr: [1, 2] };
 const LOW_QUALITY: Quality = { suffix: "-1k", paint: 1024, flap: 768, detail: 0.6, hdri: "/hdri/studio_small_09_1k.hdr", shadow: 1024, dpr: [1, 1.5] };
 const LITE_QUALITY: Quality = { suffix: "-640", paint: 768, flap: 640, detail: 0.6, hdri: "/hdri/hero-env.hdr", shadow: 1024, dpr: [1, 1.5] };
+const LITE_PHONE_DPR: [number, number] = [1, 1.25];
 const STILL_QUALITY: Quality = { suffix: "", paint: 4096, flap: 3072, detail: 1.5, hdri: "/hdri/studio_small_09_2k.hdr", shadow: 4096, dpr: [1, 1] };
+
+const isPhoneScreen = () => Math.min(window.screen.width, window.screen.height) < 700;
 
 function detectQuality(): Quality {
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
-  const small = Math.min(window.screen.width, window.screen.height) < 700;
-  return small || navigator.hardwareConcurrency <= 4 || memory <= 4 ? LOW_QUALITY : STANDARD_QUALITY;
+  return isPhoneScreen() || navigator.hardwareConcurrency <= 4 || memory <= 4 ? LOW_QUALITY : STANDARD_QUALITY;
 }
+
+const liteQuality = (): Quality => (isPhoneScreen() ? { ...LITE_QUALITY, dpr: LITE_PHONE_DPR } : LITE_QUALITY);
 
 function paintAll(spec: DesignSpec, quality: Quality): Surfaces {
   const body = quality.paint / surfaceFrame(spec.form).span;
@@ -94,10 +98,10 @@ function useFontEpoch(spec: DesignSpec) {
     if (document.fonts.check(shorthand, "OCCUIN&.")) return;
     document.fonts
       .load(shorthand, "OCCUIN&.")
+      .catch(() => undefined)
       .then(() => {
         if (live) setEpoch((value) => value + 1);
-      })
-      .catch(() => undefined);
+      });
     return () => {
       live = false;
     };
@@ -943,7 +947,7 @@ function exposeStoreInDevelopment() {
   (window as unknown as { __occuinStudio?: typeof useStudio }).__occuinStudio = useStudio;
 }
 
-function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: DesignSpec; interactive: boolean; spin: boolean; reduced: boolean; quality: Quality; onReady?: () => void }) {
+function Studio({ spec, interactive, spin, paused, reduced, quality, onReady }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void }) {
   const [forced, setForced] = useState<DesignSpec | null>(null);
   const active = forced ?? spec;
   const section = useStudio((state) => state.section);
@@ -967,6 +971,13 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
   const groundY = bag?.groundY ?? 0;
   const liveLights = !forced;
   const keyReach = bag ? bag.radius * 1.6 : 4;
+
+  const pointerTarget = useThree((state) => state.events.connected);
+
+  useEffect(() => {
+    const surface = controls.current?.domElement;
+    if (spin && surface) surface.style.touchAction = "pan-y pinch-zoom";
+  }, [spin, pointerTarget]);
 
   return (
     <>
@@ -998,7 +1009,7 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
         minDistance={bag ? bag.radius * 0.55 : 1}
         maxDistance={bag ? fitDistance(bag.radius, 1) * 2.2 : 60}
         maxPolarAngle={Math.PI * 0.62}
-        autoRotate={(autoRotate || spin) && !reduced}
+        autoRotate={(autoRotate || spin) && !reduced && !paused}
         autoRotateSpeed={spin ? 1.1 : 0.7}
       />
       {bag ? <CameraRig bag={bag} controls={controls} reduced={reduced} reveal={reveal} /> : null}
@@ -1016,9 +1027,9 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
   );
 }
 
-export default function Scene({ spec, interactive = true, spin = false, lite = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; onReady?: () => void; onContextLost?: () => void }) {
+export default function Scene({ spec, interactive = true, spin = false, lite = false, paused = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void }) {
   const [reduced, setReduced] = useState(false);
-  const [quality] = useState(() => (lite ? LITE_QUALITY : detectQuality()));
+  const [quality] = useState(() => (lite ? liteQuality() : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
 
   useEffect(() => {
@@ -1032,18 +1043,19 @@ export default function Scene({ spec, interactive = true, spin = false, lite = f
 
   return (
     <Canvas
-      frameloop={(autoRotate || spin) && !reduced ? "always" : "demand"}
+      frameloop={(autoRotate || spin) && !reduced && !paused ? "always" : "demand"}
       dpr={quality.dpr}
+      resize={{ offsetSize: true }}
       shadows
       camera={{ fov: FOV, near: 0.05, far: 400, position: [0, 3, 18] }}
-      gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: EXPOSURE, powerPreference: "high-performance" }}
+      gl={{ antialias: true, alpha: true, preserveDrawingBuffer: !lite, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: EXPOSURE, powerPreference: "high-performance" }}
       aria-label="Live three dimensional preview of your design"
       onCreated={({ gl }) => {
         gl.shadowMap.autoUpdate = false;
         gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.());
       }}
     >
-      <Studio spec={spec} interactive={interactive} spin={spin} reduced={reduced} quality={quality} onReady={onReady} />
+      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} />
     </Canvas>
   );
 }

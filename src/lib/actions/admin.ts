@@ -4,8 +4,10 @@ import { and, asc, eq, notInArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { variantToInput, type VariantInput } from "@/app/admin/_lib/format";
+import { BESPOKE_STATUSES, depositProblem, type BespokeStatus } from "@/lib/bespoke/status";
 import { ORDER_STATUSES, STATUS_LABELS, type OrderStatus } from "@/lib/order-status";
 import { requireAdmin } from "@/lib/server/auth";
+import { applyAdminUpdate, sendQuoteEmail } from "@/lib/server/bespoke";
 import { db, schema } from "@/lib/server/db";
 import { moveOrder } from "@/lib/server/orders";
 
@@ -26,8 +28,9 @@ export type ProductInput = {
   variants: VariantInput[];
 };
 export type ProductResult = ActionResult & { id?: string; variants?: VariantInput[] };
-export type MoveInput = { orderId: string; to: OrderStatus; trackingNumber: string; note: string };
-export type PromoInput = { code: string; percentOff: string; minSubtotal: string; expiresOn: string };
+export type MoveInput = { orderId: string; to: OrderStatus; trackingNumber: string; note: string; overrideBalance?: boolean };
+export type BespokeInput = { id: string; status: BespokeStatus; quotedPrice: string; depositPercent: string; adminNote: string };
+export type PromoInput = { code: string; percentOff: string; minSubtotal: string; expiresOn: string; maxUses: string; oncePerCustomer: boolean };
 
 const MAX_STOCK = 1_000_000;
 const IMAGE_PATH = /^\/images\/(?!.*\.\.)[\w./-]+$/;
@@ -247,15 +250,17 @@ export async function moveOrderStatus(input: MoveInput): Promise<ActionResult> {
       to: z.enum(ORDER_STATUSES),
       trackingNumber: z.string().trim().max(100, "Keep the tracking number under 100 characters."),
       note: z.string().trim().max(500, "Keep the note under 500 characters."),
+      overrideBalance: z.boolean().optional(),
     })
     .safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { orderId, to, trackingNumber, note } = parsed.data;
+  const { orderId, to, trackingNumber, note, overrideBalance } = parsed.data;
 
   try {
     const result = await moveOrder(orderId, to, {
       note: note || undefined,
       trackingNumber: to === "shipped" && trackingNumber ? trackingNumber : undefined,
+      overrideBalance,
     });
     if ("error" in result) return fail(result.error ?? "That move is not allowed.");
     refreshStore();
@@ -292,13 +297,19 @@ const promoSchema = z.object({
       .date("Enter a valid date.")
       .refine((value) => new Date(`${value}T23:59:59.999Z`) > new Date(), "The expiry date cannot be in the past."),
   ]),
+  maxUses: z
+    .string()
+    .trim()
+    .regex(/^$|^[1-9]\d{0,6}$/, "Enter a whole number above zero, or leave it blank.")
+    .transform((value) => (value ? Number(value) : null)),
+  oncePerCustomer: z.boolean(),
 });
 
 export async function createPromo(input: PromoInput): Promise<ActionResult> {
   await requireAdmin();
   const parsed = promoSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { code, percentOff, minSubtotal, expiresOn } = parsed.data;
+  const { code, percentOff, minSubtotal, expiresOn, maxUses, oncePerCustomer } = parsed.data;
   return attempt(async () => {
     try {
       await db.insert(promoCodes).values({
@@ -306,6 +317,8 @@ export async function createPromo(input: PromoInput): Promise<ActionResult> {
         percentOff,
         minSubtotalCents: minSubtotal,
         expiresAt: expiresOn ? new Date(`${expiresOn}T23:59:59.999Z`) : null,
+        maxUses,
+        oncePerCustomer,
       });
     } catch (error) {
       if (uniqueViolation(error)) return fail("Check the highlighted fields.", { code: "This code already exists." });
@@ -345,5 +358,44 @@ export async function setMessageHandled(messageId: string, handled: boolean): Pr
     if (!updated.length) return fail("We could not find that message.");
     refreshAdmin();
     return done(parsed.data.handled ? "Marked handled." : "Reopened.");
+  });
+}
+
+const bespokeInput = z.strictObject({
+  id: uuid,
+  status: z.enum(BESPOKE_STATUSES, "Choose a status."),
+  quotedPrice: z.string().trim().regex(/^$|^\d{1,6}(\.\d{1,2})?$/, "Enter a price in dollars, for example 240 or 240.50."),
+  depositPercent: z.string().trim().regex(/^\d{1,3}$/, "Enter a whole percent from 1 to 100.").transform(Number).refine((value) => value >= 1 && value <= 100, "Enter a whole percent from 1 to 100."),
+  adminNote: z.string().trim().max(4000, "Keep the note under 4,000 characters."),
+});
+
+export async function updateBespokeRequest(input: BespokeInput): Promise<ActionResult> {
+  await requireAdmin();
+  const parsed = bespokeInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id, status, quotedPrice, depositPercent, adminNote } = parsed.data;
+  const quotedPriceCents = quotedPrice ? Math.round(Number(quotedPrice) * 100) : null;
+  if (quotedPriceCents === 0) return fail("Check the highlighted fields.", { quotedPrice: "Enter a price above zero, or leave it blank." });
+  if (status === "quoted" && !quotedPriceCents) return fail("Check the highlighted fields.", { quotedPrice: "Set the price before marking this as quoted." });
+  const tooSmall = quotedPriceCents ? depositProblem(quotedPriceCents, depositPercent) : null;
+  if (tooSmall) return fail("Check the highlighted fields.", { depositPercent: tooSmall });
+  return attempt(async () => {
+    const result = await applyAdminUpdate({ id, status, quotedPriceCents, depositPercent, adminNote });
+    if ("error" in result) return fail(result.error ?? "That did not save. Try again.");
+    refreshAdmin();
+    if (result.requote && !result.emailed) return fail("Saved, but the quote email could not be sent. Try sending it again.");
+    return done(result.requote ? "Saved. Quote emailed to the customer." : "Saved.");
+  });
+}
+
+export async function resendBespokeQuote(requestId: string): Promise<ActionResult> {
+  await requireAdmin();
+  const parsed = uuid.safeParse(requestId);
+  if (!parsed.success) return fail("We could not find that request.");
+  return attempt(async () => {
+    const sent = await sendQuoteEmail(parsed.data);
+    if (!sent) return fail("The quote email could not be sent.");
+    refreshAdmin();
+    return done("Quote emailed again.");
   });
 }

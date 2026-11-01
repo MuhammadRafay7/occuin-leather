@@ -3,6 +3,7 @@
 import { ArrowRight } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { PRESETS, STARTING_POINTS, type PresetKey } from "@/lib/studio/presets";
 import { BagGlyph, leatherStyle, PRESS, SPRING } from "./controls";
@@ -85,6 +86,26 @@ function BlankHide({ hint, onChoose }: { hint: string; onChoose: () => void }) {
   );
 }
 
+function FromScratch() {
+  return (
+    <Link
+      href="/studio/create"
+      className="group mb-1.5 grid gap-5 overflow-hidden bg-invert-bg p-6 text-invert-fg transition-opacity hover:opacity-95 md:grid-cols-[1fr_auto] md:items-center md:p-8 lg:mb-2"
+    >
+      <span className="grid gap-1.5">
+        <span className="font-display text-[34px] leading-[1.05] tracking-[-0.01em] md:text-[48px]">Create from scratch</span>
+        <span className="max-w-[58ch] text-[15px] text-invert-fg/85">No template. Draw every panel yourself on a pattern board, choose each leather, and our workshop will price it for you.</span>
+      </span>
+      <span className="flex items-center gap-3 text-sm font-medium">
+        Open the pattern board
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-bg text-invert-bg transition-transform duration-300 group-hover:translate-x-1">
+          <ArrowRight size={18} weight="bold" aria-hidden />
+        </span>
+      </span>
+    </Link>
+  );
+}
+
 export function StartingPoints({ notice }: { notice: string | null }) {
   const begin = useStudio((state) => state.begin);
 
@@ -100,14 +121,14 @@ export function StartingPoints({ notice }: { notice: string | null }) {
     <div className="mx-auto max-w-[1440px] px-2 pb-10 pt-[96px] md:px-4 md:pt-[112px]">
       <header className="mb-8 grid gap-3 px-2 md:mb-10 md:grid-cols-[1fr_auto] md:items-end md:gap-12 md:px-2">
         <div>
-          <p className="text-xs uppercase tracking-[0.14em] text-muted">The OCCUIN studio</p>
-          <h1 className="mt-2 font-display text-[44px] leading-[1.02] tracking-[-0.015em] text-invert-bg md:text-[76px]">Begin your piece</h1>
+          <h1 className="font-display text-[44px] leading-[1.02] tracking-[-0.015em] text-invert-bg md:text-[76px]">Pick a bag to change</h1>
         </div>
         <p className="max-w-[44ch] text-muted md:pb-2">
-          Start from a form and reshape it, or begin with a blank hide. Every line, skin and stitch stays yours to change.
+          Change its size, leather, stitching and hardware in 3D, and add up to four initials. The price updates as you go.
         </p>
         {notice ? <p role="status" className="text-sm text-danger md:col-span-2">{notice}</p> : null}
       </header>
+      <FromScratch />
       <ul className="grid grid-cols-2 gap-1.5 lg:grid-cols-4 lg:gap-2">
         {pieces.map((point) => (
           <PieceCard key={point.key} presetKey={point.key} label={point.label} hint={point.hint} onChoose={() => choose(point.key)} />

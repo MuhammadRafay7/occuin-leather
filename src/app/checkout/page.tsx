@@ -24,10 +24,9 @@ export default async function CheckoutPage() {
         .where(eq(schema.addresses.userId, user.id))
         .orderBy(desc(schema.addresses.isDefault), asc(schema.addresses.createdAt))
     : [];
-  const merchandise = cart.subtotalCents - cart.discountCents;
 
   return (
-    <div className="mx-auto max-w-[1280px] px-4 pb-24 pt-24 md:px-8">
+    <div className="mx-auto max-w-[1280px] px-page pb-24 pt-header">
       <PageTitle
         sub={user ? undefined : <>Checking out as a guest. <Link href="/login?next=/checkout" className="underline underline-offset-4">Sign in</Link> to use saved addresses.</>}
       >
@@ -41,7 +40,7 @@ export default async function CheckoutPage() {
         discountCents={cart.discountCents}
         promoCode={cart.promoError ? null : cart.promoCode}
         promoError={cart.promoError}
-        shipping={{ standard: shippingCents(merchandise, "standard"), express: shippingCents(merchandise, "express") }}
+        shipping={cart.shippingWaived ? { standard: 0, express: 0 } : { standard: shippingCents(cart.shippingBasisCents, "standard"), express: shippingCents(cart.shippingBasisCents, "express") }}
         testMode={!stripe && demoPaymentsAllowed()}
       />
     </div>

@@ -2,16 +2,26 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ensureOwnerKey, getOwnerKey } from "@/lib/server/auth";
+import { ensureOwnerKey, getOwnerKey, hitRateLimit } from "@/lib/server/auth";
+import { clientIp } from "@/lib/server/client-ip";
 import { addDesign, addVariant, setPromo, setQuantity } from "@/lib/server/cart";
 
 const id = z.uuid();
 const refresh = () => revalidatePath("/", "layout");
+const TOO_FAST = "Too many changes. Try again in a minute.";
+const TOO_MANY_CODES = "Too many attempts. Try again in a few minutes.";
+
+async function tooFast(owner: string | null) {
+  const [byAddress, byOwner] = await Promise.all([hitRateLimit(`cart:ip:${await clientIp()}`, 120, 60), owner ? hitRateLimit(`cart:owner:${owner}`, 60, 60) : false]);
+  return byAddress || byOwner;
+}
 
 export async function addToBag(variantId: string) {
   const parsed = id.safeParse(variantId);
   if (!parsed.success) return { error: "Choose a size first." };
-  const result = await addVariant(await ensureOwnerKey(), parsed.data);
+  const owner = await ensureOwnerKey();
+  if (await tooFast(owner)) return { error: TOO_FAST };
+  const result = await addVariant(owner, parsed.data);
   refresh();
   return result;
 }
@@ -19,7 +29,9 @@ export async function addToBag(variantId: string) {
 export async function addDesignToBag(designId: string) {
   const parsed = id.safeParse(designId);
   if (!parsed.success) return { error: "We could not find that design." };
-  const result = await addDesign(await ensureOwnerKey(), parsed.data);
+  const owner = await ensureOwnerKey();
+  if (await tooFast(owner)) return { error: TOO_FAST };
+  const result = await addDesign(owner, parsed.data);
   refresh();
   return result;
 }
@@ -27,7 +39,7 @@ export async function addDesignToBag(designId: string) {
 export async function changeQuantity(itemId: string, quantity: number) {
   const owner = await getOwnerKey();
   const parsed = z.object({ itemId: id, quantity: z.number().int().min(0).max(10) }).safeParse({ itemId, quantity });
-  if (!owner || !parsed.success) return;
+  if (!owner || !parsed.success || (await tooFast(owner))) return;
   await setQuantity(owner, parsed.data.itemId, parsed.data.quantity);
   refresh();
 }
@@ -36,6 +48,10 @@ export async function applyPromo(code: string | null) {
   const parsed = z.string().trim().min(1).max(32).nullable().safeParse(code);
   if (!parsed.success) return { error: "That code is not valid." };
   const owner = await ensureOwnerKey();
+  if (parsed.data !== null) {
+    const [byOwner, byAddress] = await Promise.all([hitRateLimit(`promo:owner:${owner}`, 10, 600), hitRateLimit(`promo:ip:${await clientIp()}`, 30, 600)]);
+    if (byOwner || byAddress) return { error: TOO_MANY_CODES };
+  }
   const result = await setPromo(owner, parsed.data);
   refresh();
   return result;

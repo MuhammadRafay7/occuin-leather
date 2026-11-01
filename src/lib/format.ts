@@ -10,6 +10,8 @@ export type ShippingMethod = keyof typeof SHIPPING_METHODS;
 export const MAKING_TIME = "25 to 30 days";
 export const MAKING_NOTE = `Every piece is made to order. We take ${MAKING_TIME} to make and pack it, then it ships from Pakistan.`;
 
+export const BESPOKE_NOTE = `Every piece is made to order, and a piece designed from scratch usually takes longer than our regular ${MAKING_TIME}. We confirm the timing with your final price, then it ships from Pakistan.`;
+
 const ARRIVAL: Record<ShippingMethod, string> = { standard: "35 to 45 days", express: "30 to 40 days" };
 export const deliveryEstimate = (method: ShippingMethod) => `Arrives in ${ARRIVAL[method]}`;
 
@@ -24,4 +26,10 @@ export const orderRef = (number: number) => `OC-${String(number).padStart(6, "0"
 export function shippingCents(subtotalCents: number, method: ShippingMethod) {
   if (method === "standard" && subtotalCents >= FREE_SHIPPING_CENTS) return 0;
   return SHIPPING_METHODS[method].cents;
+}
+
+export function publicName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const last = parts.length > 1 ? parts.at(-1) : undefined;
+  return last ? `${parts[0]} ${last[0]!.toUpperCase()}.` : parts[0]!;
 }

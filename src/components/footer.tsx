@@ -1,27 +1,28 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/format";
+import { LogoMark } from "./logo";
 import { CookieNotice } from "./cookie-notice";
 import { NewsletterForm } from "./newsletter-form";
 
 const COLUMNS = [
-  { title: "Shop", links: [["Women", "/shop/women"], ["Men", "/shop/men"], ["Laptop bags", "/shop/leather/laptop-bags"], ["Totes", "/shop/leather/totes"], ["Wallets and cards", "/shop/leather/wallets"], ["Design your own", "/studio"]] },
+  { title: "Shop", links: [["Women", "/shop/women"], ["Men", "/shop/men"], ["Laptop bags", "/shop/leather/laptop-bags"], ["Totes", "/shop/leather/totes"], ["Wallets and cards", "/shop/leather/wallets"], ["Customise", "/studio"], ["Create your own", "/studio/create"]] },
   { title: "Help", links: [["Contact", "/contact"], ["Track an order", "/track"], ["Shipping and returns", "/shipping-returns"], ["Size guide", "/size-guide"], ["Questions", "/faq"]] },
   { title: "House", links: [["About", "/about"], ["Leather care", "/care"], ["Privacy", "/privacy"], ["Terms", "/terms"]] },
 ];
 
 export function Footer() {
   return (
-    <footer className="mt-24 border-t border-line px-4 py-14 md:px-8">
-      <div className="grid gap-10 md:grid-cols-[2fr_1fr_1fr_1fr]">
-        <div className="grid content-start gap-8">
-          <p className="font-display text-3xl tracking-[0.16em]">{BRAND.name}</p>
+    <footer className="px-page mt-16 border-t border-line py-14 md:mt-24">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-10">
+        <div className="col-span-2 grid content-start gap-8 md:col-span-1">
+          <p className="flex items-center gap-2 font-display text-3xl tracking-[0.16em]"><LogoMark className="size-9 shrink-0" />{BRAND.name}</p>
           <NewsletterForm />
         </div>
         {COLUMNS.map((column) => (
-          <nav key={column.title} aria-label={column.title} className="grid content-start gap-2 text-sm">
-            <p className="mb-1 text-muted">{column.title}</p>
+          <nav key={column.title} aria-label={column.title} className="grid content-start text-sm lg:gap-2">
+            <p className="text-muted lg:mb-1">{column.title}</p>
             {column.links.map(([label, href]) => (
-              <Link key={href} href={href!} className="hover:opacity-60">{label}</Link>
+              <Link key={href} href={href!} className="flex min-h-11 items-center hover:opacity-60 lg:block lg:min-h-0">{label}</Link>
             ))}
           </nav>
         ))}

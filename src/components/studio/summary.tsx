@@ -60,7 +60,7 @@ export function useDesignActions(blocked: string | null, onSaved: () => void) {
     try {
       await action();
     } catch {
-      setStatus({ tone: "error", message: "We could not reach the atelier. Please try again." });
+      setStatus({ tone: "error", message: "That did not go through. Please try again." });
     } finally {
       setBusy(null);
     }
@@ -154,7 +154,7 @@ function usePopover() {
   return { open, setOpen, area };
 }
 
-function Breakdown({ actions, onClose }: { actions: DesignActions; onClose: () => void }) {
+function Breakdown({ actions, onClose, side = false }: { actions: DesignActions; onClose: () => void; side?: boolean }) {
   const { quote, rows } = actions;
   return (
     <motion.div
@@ -165,7 +165,7 @@ function Breakdown({ actions, onClose }: { actions: DesignActions; onClose: () =
       exit={{ opacity: 0, y: 12, scale: 0.97 }}
       transition={SPRING}
       style={{ transformOrigin: "bottom center" }}
-      className="glass-panel absolute bottom-[calc(100%+8px)] left-0 right-0 z-10 max-h-[min(60dvh,520px)] overflow-y-auto overscroll-contain rounded-[28px] bg-bg/90 p-5 text-[13px]"
+      className={`glass-panel absolute z-10 overflow-y-auto overscroll-contain rounded-[28px] bg-bg/90 p-5 text-[13px] ${side ? "right-[calc(100%+8px)] top-0 max-h-[calc(100dvh-88px)] w-[min(340px,50vw)]" : "bottom-[calc(100%+8px)] left-0 right-0 max-h-[min(60dvh,520px)]"}`}
     >
       <div className="flex items-center justify-between gap-4">
         <h3 className="font-display text-[19px]">Price breakdown</h3>
@@ -236,7 +236,7 @@ function Notices({ actions, floating = false }: { actions: DesignActions; floati
                   aria-label="Link to this design"
                   value={shareUrl}
                   onFocus={(event) => event.currentTarget.select()}
-                  className="h-11 w-full rounded-full border border-fg/15 bg-bg/70 px-4 text-[13px] text-fg focus:border-invert-bg focus:outline-none"
+                  className="h-11 w-full rounded-full border border-fg/15 bg-bg/70 px-4 text-base text-fg focus:border-invert-bg focus:outline-none lg:text-[13px]"
                 />
               ) : null}
             </div>
@@ -350,11 +350,11 @@ export function SummaryCard({ actions, nameError }: { actions: DesignActions; na
   );
 }
 
-export function SheetSummary({ actions, nameError }: { actions: DesignActions; nameError?: string }) {
+export function SheetSummary({ actions, nameError, sidePopover = false }: { actions: DesignActions; nameError?: string; sidePopover?: boolean }) {
   const { open, setOpen, area } = usePopover();
   return (
     <div ref={area} className="relative">
-      <AnimatePresence>{open ? <Breakdown actions={actions} onClose={() => setOpen(false)} /> : null}</AnimatePresence>
+      <AnimatePresence>{open ? <Breakdown actions={actions} side={sidePopover} onClose={() => setOpen(false)} /> : null}</AnimatePresence>
       <div className="flex items-center gap-1.5 px-4">
         <div className="-mt-1 grid min-w-0 flex-1">
           <NameField error={nameError} className="-mx-1 h-11 px-1 text-[19px] leading-tight" />

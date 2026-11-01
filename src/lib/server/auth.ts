@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -9,6 +9,8 @@ import { db, schema } from "./db";
 const SESSION_COOKIE = "orsel_session";
 const GUEST_COOKIE = "orsel_guest";
 const SESSION_DAYS = 30;
+const RATE_PURGE_CHANCE = 0.01;
+const RATE_KEEP_MS = 86_400_000;
 const secure = process.env.NODE_ENV === "production";
 
 export const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -19,8 +21,13 @@ export const checkPassword = (stored: string, password: string) => verify(stored
 export async function startSession(userId: string) {
   const token = newToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
-  await db.insert(schema.sessions).values({ tokenHash: tokenHash(token), userId, expiresAt });
   const jar = await cookies();
+  const previous = jar.get(SESSION_COOKIE)?.value;
+  await db.transaction(async (tx) => {
+    if (previous) await tx.delete(schema.sessions).where(eq(schema.sessions.tokenHash, tokenHash(previous)));
+    await tx.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
+    await tx.insert(schema.sessions).values({ tokenHash: tokenHash(token), userId, expiresAt });
+  });
   jar.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", secure, path: "/", expires: expiresAt });
 }
 
@@ -78,6 +85,10 @@ export async function adoptGuestData(userId: string) {
   await db.transaction(async (tx) => {
     await tx.update(schema.designs).set({ ownerKey: to }).where(eq(schema.designs.ownerKey, from));
     await tx.update(schema.orders).set({ ownerKey: to }).where(eq(schema.orders.ownerKey, from));
+    await tx.update(schema.bespokeDesigns).set({ ownerKey: to }).where(eq(schema.bespokeDesigns.ownerKey, from));
+    await tx.update(schema.bespokeLogos).set({ ownerKey: to }).where(eq(schema.bespokeLogos.ownerKey, from));
+    await tx.update(schema.bespokeRequests).set({ ownerKey: to }).where(eq(schema.bespokeRequests.ownerKey, from));
+    await tx.update(schema.bespokeRequests).set({ acceptedOwnerKey: to }).where(eq(schema.bespokeRequests.acceptedOwnerKey, from));
     await tx.execute(sql`
       insert into wishlist_items (owner_key, product_id)
       select ${to}, product_id from wishlist_items where owner_key = ${from}
@@ -91,8 +102,8 @@ export async function adoptGuestData(userId: string) {
       return;
     }
     await tx.execute(sql`
-      insert into cart_items (cart_id, variant_id, design_id, quantity)
-      select ${userCart.id}, variant_id, design_id, quantity from cart_items where cart_id = ${guestCart.id}
+      insert into cart_items (cart_id, variant_id, design_id, bespoke_request_id, quantity)
+      select ${userCart.id}, variant_id, design_id, bespoke_request_id, quantity from cart_items where cart_id = ${guestCart.id}
       on conflict do nothing`);
     await tx.delete(schema.carts).where(eq(schema.carts.id, guestCart.id));
   });
@@ -100,6 +111,7 @@ export async function adoptGuestData(userId: string) {
 }
 
 export async function hitRateLimit(key: string, max: number, windowSeconds: number) {
+  if (Math.random() < RATE_PURGE_CHANCE) await db.delete(schema.rateLimits).where(lt(schema.rateLimits.windowStart, new Date(Date.now() - RATE_KEEP_MS)));
   const result = await db.execute<{ hits: number }>(sql`
     insert into rate_limits (key, hits, window_start) values (${key}, 1, now())
     on conflict (key) do update set

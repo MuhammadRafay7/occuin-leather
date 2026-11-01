@@ -82,7 +82,7 @@ export function useFloatingClearance(ref: RefObject<HTMLElement | null>) {
     const measure = () => {
       const notice = document.querySelector('[aria-label="Cookie notice"]')?.getBoundingClientRect();
       const box = ref.current?.getBoundingClientRect();
-      const overlaps = notice && box && notice.left < box.right && notice.right > box.left;
+      const overlaps = notice && (!box || (notice.left < box.right && notice.right > box.left));
       setLift(overlaps ? Math.max(window.innerHeight - notice.top, 0) : 0);
     };
     measure();

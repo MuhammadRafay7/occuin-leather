@@ -12,6 +12,7 @@ const MAX_QUANTITY = 10;
 
 function stockWarning(line: CartLine) {
   if (line.quantity <= line.available) return null;
+  if (line.available < 1 && line.kind === "bespoke") return "This quote can no longer be bought. Remove it to check out.";
   if (line.available < 1) return "Sold out. Remove this item to check out.";
   return `Only ${line.available} left. Lower the quantity to check out.`;
 }

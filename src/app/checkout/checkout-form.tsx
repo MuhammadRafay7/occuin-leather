@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { AddressFields, type AddressDefaults } from "@/components/address-fields";
 import { FormMessage } from "@/components/form-message";
 import { LineImage } from "@/components/line-image";
@@ -34,9 +34,14 @@ export function CheckoutForm({ email, saved, lines, subtotalCents, discountCents
   const [method, setMethod] = useState<ShippingMethod>("standard");
   const [address, setAddress] = useState<AddressDefaults>(saved[0]?.address ?? {});
   const [addressKey, setAddressKey] = useState(0);
+  const form = useRef<HTMLFormElement>(null);
   const errors = state.fields ?? {};
   const totalCents = subtotalCents - discountCents + shipping[method];
   const short = lines.filter((line) => line.quantity > line.available);
+
+  useEffect(() => {
+    if (state.fields) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [state]);
 
   const pickAddress = (id: string) => {
     setAddress(saved.find((entry) => entry.id === id)?.address ?? {});
@@ -44,7 +49,7 @@ export function CheckoutForm({ email, saved, lines, subtotalCents, discountCents
   };
 
   return (
-    <form action={action} onSubmit={submitInPlace(action)} noValidate className="grid gap-12 lg:grid-cols-[1fr_420px]">
+    <form ref={form} action={action} onSubmit={submitInPlace(action)} noValidate className="grid gap-12 lg:grid-cols-[1fr_420px]">
       <div className="grid content-start gap-10">
         {testMode ? <p role="status" className="border border-line bg-surface p-3 text-sm">Test mode: no card is charged</p> : null}
 
@@ -74,7 +79,7 @@ export function CheckoutForm({ email, saved, lines, subtotalCents, discountCents
           <legend className={`${sectionTitle} mb-5`}>Shipping method</legend>
           {METHODS.map((value) => (
             <label key={value} className="flex min-h-12 cursor-pointer items-center gap-3 border border-line px-3 py-2 text-sm has-[:checked]:border-fg">
-              <input type="radio" name="method" value={value} checked={method === value} onChange={() => setMethod(value)} className="accent-[var(--fg)]" />
+              <input type="radio" name="method" value={value} checked={method === value} onChange={() => setMethod(value)} className="size-5 accent-[var(--fg)] lg:size-auto" />
               <span className="flex-1">{SHIPPING_METHODS[value].label}<span className="block text-xs text-muted">{deliveryEstimate(value)}</span></span>
               <span>{shipping[value] ? money(shipping[value]) : "Free"}</span>
             </label>

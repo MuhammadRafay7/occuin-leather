@@ -1,11 +1,11 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { getOwnerKey, getUser } from "./auth";
+import { linkKey } from "./link-key";
 
 const TOKEN_SECONDS = 3600;
 
-const signingKey = () => createHash("sha256").update(`order-link:${process.env.DATABASE_URL}`).digest();
 const signature = (orderId: string, expires: string) =>
-  createHmac("sha256", signingKey()).update(`${orderId}.${expires}`).digest();
+  createHmac("sha256", linkKey("order-link")).update(`${orderId}.${expires}`).digest();
 
 export function orderToken(orderId: string) {
   const expires = String(Math.floor(Date.now() / 1000) + TOKEN_SECONDS);

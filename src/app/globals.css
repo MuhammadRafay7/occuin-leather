@@ -11,6 +11,22 @@
   --danger: #b3261e;
 }
 
+@custom-variant short (@media (orientation: landscape) and (max-height: 520px));
+
+@utility px-page {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+
+  @media (width >= 48rem) {
+    padding-left: max(2rem, env(safe-area-inset-left));
+    padding-right: max(2rem, env(safe-area-inset-right));
+  }
+}
+
+@utility pt-header {
+  padding-top: calc(6rem + env(safe-area-inset-top));
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -29,12 +45,23 @@ html {
   background: var(--bg);
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-padding-top: calc(5rem + env(safe-area-inset-top));
 }
 
 body {
   font-family: var(--font-geist), system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.55;
+  touch-action: manipulation;
+}
+
+input,
+select,
+textarea {
+  scroll-margin-block: calc(5.5rem + env(safe-area-inset-top)) 2rem;
 }
 
 :focus-visible {
@@ -52,15 +79,18 @@ body {
   .glass-panel {
     position: relative;
     isolation: isolate;
-    border: 1px solid rgb(255 255 255 / 0.55);
-    -webkit-backdrop-filter: blur(16px) saturate(185%);
-    backdrop-filter: blur(16px) saturate(185%);
+    border: 1px solid rgb(255 255 255 / 0.6);
+    -webkit-backdrop-filter: blur(22px) saturate(185%);
+    backdrop-filter: blur(22px) saturate(185%);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.9),
-      inset 0 -1px 1px rgb(255 255 255 / 0.3),
-      inset 0 0 14px rgb(255 255 255 / 0.35),
-      0 1px 2px rgb(23 49 42 / 0.08),
-      0 14px 36px -10px rgb(23 49 42 / 0.26);
+      inset 0 1px 0 rgb(255 255 255 / 1),
+      inset 1px 0 0 rgb(255 255 255 / 0.45),
+      inset -1px 0 0 rgb(255 255 255 / 0.3),
+      inset 0 -1px 1px rgb(255 255 255 / 0.4),
+      inset 0 0 16px rgb(255 255 255 / 0.4),
+      0 0 0 0.5px rgb(14 32 27 / 0.22),
+      0 1px 2px rgb(23 49 42 / 0.1),
+      0 14px 36px -10px rgb(23 49 42 / 0.28);
   }
 
   .glass {
@@ -74,7 +104,7 @@ body {
   }
 
   .refract .glass {
-    backdrop-filter: url(#liquid-glass) blur(5px) saturate(185%);
+    backdrop-filter: url(#liquid-glass) blur(8px) saturate(185%);
   }
 
   .glass::after,
@@ -87,7 +117,14 @@ body {
     pointer-events: none;
     background:
       radial-gradient(260px circle at var(--gx, -100vw) var(--gy, -100vw), rgb(255 255 255 / 0.55), transparent 70%) fixed,
-      linear-gradient(135deg, rgb(255 255 255 / 0.5), transparent 36%, transparent 68%, rgb(255 255 255 / 0.2));
+      linear-gradient(135deg, rgb(255 255 255 / 0.65), transparent 34%, transparent 66%, rgb(255 255 255 / 0.28));
+  }
+}
+
+@media (hover: none) {
+  .glass::after,
+  .glass-panel::after {
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.5), transparent 36%, transparent 68%, rgb(255 255 255 / 0.2));
   }
 }
 

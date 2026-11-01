@@ -15,13 +15,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (await getUser()) redirect(next);
 
   return (
-    <div className="mx-auto max-w-[460px] px-4 pb-24 pt-24 md:px-8">
+    <div className="mx-auto max-w-[460px] px-page pb-24 pt-header">
       <PageTitle>Sign in</PageTitle>
       <div className="grid gap-6">
         {query.reset === "1" ? <FormMessage notice="Your password is changed. Sign in with the new one." /> : null}
         <LoginForm next={next} />
         <p className="text-sm text-muted">
-          <Link href="/forgot" className="underline underline-offset-4">Forgot your password?</Link>
+          <Link href="/forgot" className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-0">Forgot your password?</Link>
         </p>
         <p className="text-sm text-muted">
           New to OCCUIN? <Link href={`/register?next=${encodeURIComponent(next)}`} className="underline underline-offset-4">Create an account</Link>

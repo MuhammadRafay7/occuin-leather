@@ -8,7 +8,7 @@ export default async function ResetPage({ searchParams }: { searchParams: Promis
   const { token } = await searchParams;
 
   return (
-    <div className="mx-auto max-w-[460px] px-4 pb-24 pt-24 md:px-8">
+    <div className="mx-auto max-w-[460px] px-page pb-24 pt-header">
       <PageTitle>Choose a new password</PageTitle>
       {typeof token === "string" && token ? (
         <ResetForm token={token} />

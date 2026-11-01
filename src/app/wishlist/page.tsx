@@ -11,7 +11,7 @@ export default async function WishlistPage() {
   const items = await getWishlist(await getOwnerKey());
 
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <PageTitle>Saved items</PageTitle>
       {items.length ? (
         <div className="grid grid-cols-2 gap-x-2 gap-y-8 md:grid-cols-3 lg:grid-cols-4">

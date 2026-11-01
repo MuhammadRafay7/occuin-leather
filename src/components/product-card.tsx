@@ -12,11 +12,11 @@ export function ProductCard({ product, sizes = "(min-width: 1024px) 25vw, 50vw",
           <div className="absolute inset-0 transition-transform duration-700 ease-out [backface-visibility:hidden] group-hover:scale-[1.03]">
             <Image src={product.image} alt={product.name} fill sizes={sizes} preload={priority} className="object-cover" />
             {product.hoverImage ? (
-              <Image src={product.hoverImage} alt="" fill sizes={sizes} loading="eager" className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+              <Image src={product.hoverImage} alt="" fill sizes={sizes} loading="lazy" className="hidden object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100 [@media(hover:hover)]:block" />
             ) : null}
           </div>
         </div>
-        <div className="mt-3 flex items-baseline justify-between gap-4 text-[13px]">
+        <div className="mt-2 grid gap-0.5 text-[13px] leading-snug sm:mt-3 sm:flex sm:items-baseline sm:justify-between sm:gap-4">
           <h3>{product.name}</h3>
           <p className="shrink-0">{product.soldOut ? <span className="text-muted">Sold out</span> : money(product.priceCents)}</p>
         </div>

@@ -6,13 +6,13 @@ import { createPromo, type PromoInput } from "@/lib/actions/admin";
 import { useAction } from "../_components/controls";
 import { controlClass, Notice, primaryButtonClass } from "../_components/ui";
 
-const BLANK: PromoInput = { code: "", percentOff: "10", minSubtotal: "0", expiresOn: "" };
+const BLANK: PromoInput = { code: "", percentOff: "10", minSubtotal: "0", expiresOn: "", maxUses: "", oncePerCustomer: false };
 
 export function PromoForm() {
   const [promo, setPromo] = useState(BLANK);
   const { pending, result, run } = useAction();
   const errors = result?.fieldErrors ?? {};
-  const set = (key: keyof PromoInput, value: string) => setPromo((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof PromoInput, value: string | boolean) => setPromo((current) => ({ ...current, [key]: value }));
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -37,6 +37,13 @@ export function PromoForm() {
         <Field label="Expires" error={errors.expiresOn} hint="Optional. Ends at the close of this day, UTC.">
           <input type="date" value={promo.expiresOn} onChange={(event) => set("expiresOn", event.target.value)} className={controlClass} />
         </Field>
+        <Field label="Use limit" error={errors.maxUses} hint="Optional. Total uses across all customers.">
+          <input inputMode="numeric" value={promo.maxUses} onChange={(event) => set("maxUses", event.target.value)} className={controlClass} />
+        </Field>
+        <label className="flex items-center gap-2 self-center text-sm">
+          <input type="checkbox" checked={promo.oncePerCustomer} onChange={(event) => set("oncePerCustomer", event.target.checked)} />
+          Once per customer
+        </label>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className={primaryButtonClass}>{pending ? "Creating" : "Create code"}</button>

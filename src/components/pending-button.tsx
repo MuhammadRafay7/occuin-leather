@@ -3,7 +3,7 @@
 import type { ComponentProps } from "react";
 import { useFormStatus } from "react-dom";
 
-const TEXT_BUTTON = "py-2 text-sm underline underline-offset-4 hover:opacity-60 disabled:opacity-40";
+const TEXT_BUTTON = "min-h-11 whitespace-nowrap py-2 text-sm underline lg:min-h-0 underline-offset-4 hover:opacity-60 disabled:opacity-40";
 
 export function PendingTextButton({ pendingLabel, children, ...props }: ComponentProps<"button"> & { pendingLabel: string }) {
   const { pending } = useFormStatus();

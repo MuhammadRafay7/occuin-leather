@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { z } from "zod";
+import { balanceCents, balanceOwedCents, bespokeRef, depositCents } from "@/lib/bespoke/status";
 import { MAKING_TIME, money, orderRef, SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
 import { STATUS_LABELS } from "@/lib/order-status";
 import { requireAdmin } from "@/lib/server/auth";
@@ -11,6 +12,7 @@ import { describeDesign } from "@/lib/studio/pricing";
 import { AdminTitle, linkClass, Section, StatusBadge, Table } from "../../_components/ui";
 import { dateTime } from "../../_lib/format";
 import { findCustomer } from "../../_lib/queries";
+import { BalancePanel } from "../../bespoke/[id]/balance-panel";
 import { MoveOrderForm } from "./move-form";
 
 export const metadata: Metadata = { title: "Order" };
@@ -70,6 +72,7 @@ export default async function AdminOrder({ params }: { params: Promise<{ id: str
   const address = order.shippingAddress;
   const method = SHIPPING_METHODS[order.shippingMethod as ShippingMethod]?.label ?? order.shippingMethod;
   const designs = order.items.filter((item) => item.designSpec);
+  const balanceDueCents = order.bespoke.reduce((sum, request) => sum + balanceOwedCents(request), 0);
 
   return (
     <>
@@ -113,7 +116,11 @@ export default async function AdminOrder({ params }: { params: Promise<{ id: str
             <Table caption="Order items" head={["Item", "Detail", "Unit", "Qty", "Line total"]} minWidth="min-w-[600px]">
               {order.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.name}{item.designSpec ? <span className="block text-xs text-muted">Made to order</span> : null}</td>
+                  <td>
+                    {item.name}
+                    {item.designSpec ? <span className="block text-xs text-muted">Made to order</span> : null}
+                    {item.bespokeRequestId ? <Link href={`/admin/bespoke/${item.bespokeRequestId}`} className={`block text-xs ${linkClass}`}>Bespoke request</Link> : null}
+                  </td>
                   <td className="max-w-[40ch] text-muted">{item.designSpec ? "See specification below" : item.detail}</td>
                   <td className="tabular-nums">{money(item.unitPriceCents)}</td>
                   <td className="tabular-nums">{item.quantity}</td>
@@ -152,8 +159,21 @@ export default async function AdminOrder({ params }: { params: Promise<{ id: str
           <div className="border border-line p-3">
             <h2 className="mb-2 text-sm font-medium">Status</h2>
             <p className="mb-3 text-sm">{STATUS_LABELS[order.status]}</p>
-            <MoveOrderForm orderId={order.id} status={order.status} />
+            <MoveOrderForm orderId={order.id} status={order.status} balanceDueCents={balanceDueCents} />
           </div>
+          {order.bespoke.map((request) => (
+            <div key={request.id} className="border border-line p-3">
+              <h2 className="mb-2 text-sm font-medium"><Link href={`/admin/bespoke/${request.id}`} className={linkClass}>{bespokeRef(request.number)}</Link> deposit and balance</h2>
+              <Pairs
+                rows={[
+                  ["Total", money(request.quotedPriceCents ?? 0)],
+                  [request.depositPaidAt ? "Deposit paid" : `Deposit, ${request.depositPercent}%`, money(depositCents(request.quotedPriceCents ?? 0, request.depositPercent))],
+                  [request.balancePaidAt ? "Balance paid" : "Balance due", money(balanceCents(request.quotedPriceCents ?? 0, request.depositPercent))],
+                ]}
+              />
+              {balanceOwedCents(request) ? <div className="mt-3"><BalancePanel requestId={request.id} owedCents={balanceOwedCents(request)} requestedAt={request.balanceRequestedAt ? dateTime(request.balanceRequestedAt) : null} /></div> : null}
+            </div>
+          ))}
           <div className="border border-line p-3">
             <h2 className="mb-2 text-sm font-medium">Payment and shipping</h2>
             <Pairs

@@ -14,7 +14,7 @@ export default async function BagPage() {
 
   if (!cart.lines.length) {
     return (
-      <div className="mx-auto max-w-[1280px] px-4 pb-24 pt-24 md:px-8">
+      <div className="mx-auto max-w-[1280px] px-page pb-24 pt-header">
         <PageTitle>Bag</PageTitle>
         <EmptyState
           title="Your bag is empty"
@@ -26,12 +26,12 @@ export default async function BagPage() {
   }
 
   const merchandise = cart.subtotalCents - cart.discountCents;
-  const shipping = shippingCents(merchandise, "standard");
-  const toFreeShipping = FREE_SHIPPING_CENTS - merchandise;
+  const shipping = cart.shippingWaived ? 0 : shippingCents(cart.shippingBasisCents, "standard");
+  const toFreeShipping = FREE_SHIPPING_CENTS - cart.shippingBasisCents;
   const short = cart.lines.some((line) => line.quantity > line.available);
 
   return (
-    <div className="mx-auto max-w-[1280px] px-4 pb-24 pt-24 md:px-8">
+    <div className="mx-auto max-w-[1280px] px-page pb-24 pt-header">
       <PageTitle>Bag</PageTitle>
       <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
         <ul className="border-t border-line">
@@ -62,7 +62,9 @@ export default async function BagPage() {
             </div>
           </dl>
           <p className="text-sm text-muted">
-            {toFreeShipping > 0
+            {cart.shippingWaived
+              ? "Shipping is added when you pay the balance."
+              : toFreeShipping > 0
               ? `Spend ${money(toFreeShipping)} more for free standard shipping.`
               : "Your order qualifies for free standard shipping."}
           </p>
@@ -71,7 +73,7 @@ export default async function BagPage() {
           ) : (
             <LinkButton href="/checkout" className="w-full">Check out</LinkButton>
           )}
-          <Link href="/shop/leather" className="text-sm underline underline-offset-4 hover:opacity-60">Continue shopping</Link>
+          <Link href="/shop/leather" className="flex min-h-11 items-center text-sm underline underline-offset-4 hover:opacity-60 lg:block lg:min-h-0">Continue shopping</Link>
         </aside>
       </div>
     </div>

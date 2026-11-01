@@ -24,7 +24,7 @@ export default async function AccountPage() {
         <section aria-labelledby="recent-title" className="grid gap-4">
           <div className="flex items-baseline justify-between gap-4">
             <h2 id="recent-title" className="font-display text-2xl">Recent orders</h2>
-            {orders.length > RECENT ? <Link href="/account/orders" className="text-sm underline underline-offset-4">View all</Link> : null}
+            {orders.length > RECENT ? <Link href="/account/orders" className="flex min-h-11 items-center text-sm underline underline-offset-4 lg:block lg:min-h-0">View all</Link> : null}
           </div>
           {orders.length ? <OrderList orders={orders.slice(0, RECENT)} /> : <p className="text-muted">You have no orders yet.</p>}
         </section>

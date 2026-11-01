@@ -2,18 +2,28 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Section, Sections } from "@/components/prose";
 import { PageTitle } from "@/components/ui";
-import { FREE_SHIPPING_CENTS, MAKING_NOTE, SHIPPING_METHODS, money } from "@/lib/format";
+import { FREE_SHIPPING_CENTS, MAKING_NOTE, MAKING_TIME, SHIPPING_METHODS, deliveryEstimate, money } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
+import { COUNTRIES } from "@/lib/validation";
 
-export const metadata: Metadata = {
-  title: "Shipping and returns",
-  description: "Delivery times, shipping costs, and how to return an OCCUIN order.",
-};
+export const metadata: Metadata = pageMeta("/shipping-returns");
+
+const countryList = COUNTRIES.map((country) => country.name).sort().join(", ");
 
 export default function ShippingReturnsPage() {
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <PageTitle>Shipping and returns</PageTitle>
       <Sections>
+        <Section title="How long does delivery take?">
+          <p>Tracked international shipping: {deliveryEstimate("standard").toLowerCase()}. Express courier: {deliveryEstimate("express").toLowerCase()}. Both times include the {MAKING_TIME} we take to make and pack your piece.</p>
+        </Section>
+        <Section title="Which countries do you ship to?">
+          <p>We ship from Pakistan to these countries at checkout: {countryList}.</p>
+        </Section>
+        <Section title="Can I return an item?">
+          <p>Only if it arrives faulty or differs from your order. Every piece is made to order, so we do not accept returns for a change of mind.</p>
+        </Section>
         <Section title="Shipping">
           <ul>
             <li>{SHIPPING_METHODS.standard.label}: {money(SHIPPING_METHODS.standard.cents)}.</li>

@@ -27,7 +27,7 @@ export default async function AddressesPage() {
             {saved.map((entry) => (
               <li key={entry.id} className="grid content-between gap-4 border border-line p-4">
                 <div className="grid gap-2">
-                  {entry.isDefault ? <p className="text-xs uppercase tracking-[0.14em] text-muted">Default</p> : null}
+                  {entry.isDefault ? <p className="text-xs text-muted">Default</p> : null}
                   <AddressCard address={entry.address} />
                 </div>
                 <div className="flex flex-wrap gap-x-5">

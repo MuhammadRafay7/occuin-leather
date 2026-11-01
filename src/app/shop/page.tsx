@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 export default function ShopPage() {
-  redirect("/shop/leather");
+  permanentRedirect("/shop/leather");
 }

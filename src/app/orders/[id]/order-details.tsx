@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { LineImage } from "@/components/line-image";
+import { balanceCents, balanceOwedCents, bespokeRef, depositCents } from "@/lib/bespoke/status";
 import { MAKING_TIME, longDate, money, orderRef, SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
 import { STATUS_LABELS } from "@/lib/order-status";
 import type { getOrder } from "@/lib/server/orders";
@@ -25,6 +27,7 @@ function OrderItem({ item }: { item: Item }) {
         <p className="font-display text-xl leading-tight">{item.name}</p>
         {rows.length ? null : <p className="mt-1 text-muted">{item.detail}</p>}
         <p className="mt-1 text-muted">Quantity {item.quantity}</p>
+        {item.bespokeRequestId ? <Link href={`/bespoke/mine/${item.bespokeRequestId}`} className="mt-1 inline-block underline underline-offset-4">View your bespoke design</Link> : null}
         {rows.length ? (
           <dl className="mt-3 grid gap-1 text-[13px]">
             {rows.map(([label, value]) => (
@@ -92,6 +95,22 @@ export function OrderDetails({ order }: { order: Order }) {
               <dd>{money(order.totalCents)}</dd>
             </div>
           </dl>
+          {order.bespoke.filter((request) => request.quotedPriceCents && balanceCents(request.quotedPriceCents, request.depositPercent)).map((request) => (
+            <dl key={request.id} data-testid="order-balance" className="mt-6 grid gap-3 border-t border-line pt-6 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">{bespokeRef(request.number)} total</dt>
+                <dd>{money(request.quotedPriceCents!)}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">{request.depositPaidAt ? "Deposit paid" : "Deposit"}</dt>
+                <dd>{money(depositCents(request.quotedPriceCents!, request.depositPercent))}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">{balanceOwedCents(request) ? "Balance due before shipping" : "Balance paid"}</dt>
+                <dd>{money(balanceCents(request.quotedPriceCents!, request.depositPercent))}</dd>
+              </div>
+            </dl>
+          ))}
         </section>
 
         <div className="grid content-start gap-10">

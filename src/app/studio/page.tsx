@@ -2,17 +2,18 @@ import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { z } from "zod";
 import { Studio, type StudioInitial } from "@/components/studio/studio";
+import { pageMeta } from "@/lib/seo";
 import { getOwnerKey } from "@/lib/server/auth";
 import { getProduct } from "@/lib/server/catalog";
 import { db, schema } from "@/lib/server/db";
 import { COLORS, designSpecSchema, normalizeSpec, type ColorKey } from "@/lib/studio/spec";
 
-export const metadata: Metadata = {
-  title: "Design your own",
-  description: "Design your own leather piece from nothing, in live 3D, and have it made by hand.",
-};
-
 type Params = { from?: string | string[]; design?: string | string[]; color?: string | string[] };
+
+export async function generateMetadata({ searchParams }: { searchParams: Promise<Params> }): Promise<Metadata> {
+  const { design } = await searchParams;
+  return design ? { ...pageMeta("/studio"), robots: { index: false, follow: true } } : pageMeta("/studio");
+}
 
 async function loadDesign(id: string): Promise<StudioInitial> {
   const parsedId = z.uuid().safeParse(id);

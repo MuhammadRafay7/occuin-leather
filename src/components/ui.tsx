@@ -21,7 +21,7 @@ export function LinkButton({ look = "solid", className = "", ...props }: Compone
 }
 
 export const inputClass =
-  "h-12 w-full border border-line bg-transparent px-3 text-[15px] text-fg placeholder:text-muted focus:border-fg focus:outline-none";
+  "h-12 w-full border border-line bg-transparent px-3 text-base text-fg placeholder:text-muted lg:text-[15px] focus:border-fg focus:outline-none";
 
 export function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {
   return (
@@ -45,7 +45,7 @@ export function PageTitle({ children, sub }: { children: ReactNode; sub?: ReactN
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="grid justify-items-start gap-4 py-20">
+    <div className="grid justify-items-start gap-4 py-12 md:py-20">
       <h2 className="font-display text-3xl">{title}</h2>
       <p className="max-w-[50ch] text-muted">{body}</p>
       {action}

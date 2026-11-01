@@ -47,7 +47,7 @@ export function NavLinks({ links, menus }: { links: Item[]; menus: Record<string
           setActive(null);
           release();
         }}
-        className="hidden items-center text-[13px] lg:flex"
+        className="hidden items-center text-[13px] min-[1100px]:flex"
       >
         {links.map((item) => (
           <Link

@@ -3,13 +3,16 @@
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
-import { checkPassword, hashPassword, hitRateLimit, requireUser, startSession } from "@/lib/server/auth";
+import { eraseAccount } from "@/lib/server/account-deletion";
+import { checkPassword, endSession, hashPassword, hitRateLimit, requireUser, startSession } from "@/lib/server/auth";
 import { db, schema } from "@/lib/server/db";
+import { sendMail } from "@/lib/server/mail";
 import { fieldErrors, formText as text, type FormState } from "@/lib/form-state";
 import { addressInput, addressSchema, emailField, newPasswordField } from "@/lib/validation";
 
-const { addresses, sessions, users } = schema;
+const { addresses, passwordResets, sessions, users } = schema;
 const MAX_ADDRESSES = 20;
 const UNIQUE_VIOLATION = "23505";
 const TOO_MANY = "Too many attempts. Try again in a few minutes.";
@@ -45,16 +48,34 @@ export async function updateProfile(_: FormState, data: FormData): Promise<FormS
   }
 
   const updated = await db
-    .update(users)
-    .set(emailChanged ? { name, email } : { name })
-    .where(eq(users.id, user.id))
-    .returning({ id: users.id })
+    .transaction(async (tx) => {
+      const rows = await tx
+        .update(users)
+        .set(emailChanged ? { name, email } : { name })
+        .where(eq(users.id, user.id))
+        .returning({ id: users.id });
+      if (emailChanged) {
+        await tx.delete(passwordResets).where(eq(passwordResets.userId, user.id));
+        await tx.delete(sessions).where(eq(sessions.userId, user.id));
+      }
+      return rows;
+    })
     .catch((error) => {
       if (error?.cause?.code === UNIQUE_VIOLATION) return [];
       throw error;
     });
   if (!updated.length) return { fields: { email: "We could not use that email." } };
 
+  if (emailChanged) {
+    await startSession(user.id);
+    after(() =>
+      sendMail({
+        to: user.email,
+        subject: "Your OCCUIN email was changed",
+        text: "The email on your OCCUIN account was just changed. If this was not you, contact us straight away.",
+      }).catch(() => false),
+    );
+  }
   revalidatePath("/", "layout");
   return { notice: "Your details are saved." };
 }
@@ -73,10 +94,26 @@ export async function changePassword(_: FormState, data: FormData): Promise<Form
   const passwordHash = await hashPassword(parsed.data.password);
   await db.transaction(async (tx) => {
     await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+    await tx.delete(passwordResets).where(eq(passwordResets.userId, user.id));
     await tx.delete(sessions).where(eq(sessions.userId, user.id));
   });
   await startSession(user.id);
   return { notice: "Your password is changed. Other devices are signed out." };
+}
+
+export async function deleteAccount(_: FormState, data: FormData): Promise<FormState> {
+  const user = await requireUser("/account/profile");
+  if (user.role === "admin") return { error: "Administrator accounts cannot be deleted here." };
+  if (await hitRateLimit(`delete-account:${user.id}`, 5, 900)) return { error: TOO_MANY };
+  if (!(await passwordMatches(user.id, text(data, "password")))) return { fields: { password: "That password is not correct." } };
+  if (!(await eraseAccount(user))) return { error: "You have an order or bespoke piece in progress. We can delete your account once it is finished." };
+
+  await endSession();
+  after(() =>
+    sendMail({ to: user.email, subject: "Your OCCUIN account was deleted", text: "Your OCCUIN account has been deleted. If this was not you, contact us straight away." }).catch(() => false),
+  );
+  revalidatePath("/", "layout");
+  redirect("/");
 }
 
 export async function saveAddress(_: FormState, data: FormData): Promise<FormState> {

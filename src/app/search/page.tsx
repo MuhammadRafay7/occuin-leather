@@ -22,9 +22,9 @@ async function Suggestions() {
   const featured = products.filter((card) => card.featured).slice(0, 4);
   return (
     <div className="mt-10 grid gap-12">
-      <nav aria-label="Suggestions" className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <nav aria-label="Suggestions" className="flex flex-wrap gap-x-6 text-sm lg:gap-y-2">
         {categories.map((category) => (
-          <Link key={category.slug} href={categoryPath("leather", category.slug)} className="underline underline-offset-4 hover:opacity-60">
+          <Link key={category.slug} href={categoryPath("leather", category.slug)} className="flex min-h-11 items-center underline underline-offset-4 hover:opacity-60 lg:block lg:min-h-0">
             {category.name}
           </Link>
         ))}
@@ -47,7 +47,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const results = await search(query);
 
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <h1 className="font-display text-4xl leading-[1.05] md:text-6xl">Search</h1>
       <Form action="/search" role="search" className="mt-8 flex max-w-2xl gap-2">
         <input type="search" name="q" defaultValue={query} aria-label="Search the collection" placeholder="Tote, cognac, belt" className={inputClass} />

@@ -6,10 +6,11 @@ export function GlassEffects() {
   useEffect(() => {
     const root = document.documentElement;
     const brands = (navigator as Navigator & { userAgentData?: { brands: { brand: string }[] } }).userAgentData?.brands ?? [];
-    if (brands.some(({ brand }) => brand === "Chromium")) root.classList.add("refract");
+    if (brands.some(({ brand }) => brand === "Chromium") && window.matchMedia("(hover: hover)").matches) root.classList.add("refract");
 
     let frame = 0;
     const onMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         root.style.setProperty("--gx", `${event.clientX}px`);

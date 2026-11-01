@@ -1,14 +1,28 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/seo";
 
-const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
+const PRIVATE_PATHS = ["/admin", "/account", "/api", "/bag", "/bespoke", "/checkout", "/orders", "/search", "/studio/render", "/wishlist"];
+
+const NAMED_CRAWLERS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "ClaudeBot",
+  "Claude-SearchBot",
+  "Claude-User",
+  "PerplexityBot",
+  "Perplexity-User",
+  "Google-Extended",
+  "Applebot-Extended",
+  "Bingbot",
+];
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
-      userAgent: "*",
-      allow: "/",
-      disallow: ["/admin", "/account", "/api", "/bag", "/checkout", "/orders", "/search", "/wishlist"],
-    },
-    sitemap: `${APP_URL}/sitemap.xml`,
+    rules: [
+      { userAgent: "*", allow: "/", disallow: PRIVATE_PATHS },
+      { userAgent: NAMED_CRAWLERS, allow: "/", disallow: PRIVATE_PATHS },
+    ],
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

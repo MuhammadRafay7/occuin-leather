@@ -4,6 +4,7 @@ import { ArrowCounterClockwise, ArrowLeft, ArrowRight, ArrowUUpLeft, ArrowUUpRig
 import { animate, AnimatePresence, MotionConfig, motion, useMotionValue, useReducedMotion, useTransform, type AnimationPlaybackControls, type MotionValue } from "motion/react";
 import { Pinyon_Script } from "next/font/google";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useMediaQuery } from "@/components/glass/hooks";
 import { designSpecSchema, type DesignSpec } from "@/lib/studio/spec";
 import { PRESS, SECONDARY, Segments, SPRING } from "./controls";
 import { SavedDesigns } from "./saved";
@@ -62,14 +63,19 @@ const DOCK_ICONS: Record<Exclude<StepKey, "saved">, Icon> = {
   personalise: TextAa,
 };
 
+const COMPACT_LABELS: Partial<Record<StepKey, string>> = { personalise: "Initials" };
+
 const DESKTOP_QUERY = "(min-width: 1024px)";
-const NAV_BOTTOM_PX = 64;
+const SHORT_LANDSCAPE_QUERY = "(orientation: landscape) and (max-height: 520px)";
+const STAGE_TOP_PX = 130;
+const PICKER_PX = 56;
+const BAG_SHARE = 0.5;
 const FOOTER_PX = 128;
 const PEEK_PX = 108;
 const RUBBER_PX = 240;
 const PEEK_STAGE_SCALE = 1.15;
 const HALF_SHARE = 0.54;
-const FULL_SHARE = 0.74;
+const FULL_SHARE = 0.72;
 const DECELERATION = 0.994;
 const HISTORY_MS = 100;
 
@@ -82,6 +88,10 @@ function useIsDesktop() {
     return () => query.removeEventListener("change", sync);
   }, []);
   return desktop;
+}
+
+function useIsShortLandscape() {
+  return useMediaQuery(SHORT_LANDSCAPE_QUERY);
 }
 
 function useLockedPage() {
@@ -99,7 +109,7 @@ function useLockedPage() {
 const REFRACT = "[.refract_&]:[backdrop-filter:url(#liquid-glass)_blur(9px)_saturate(190%)]";
 const TOOL = "grid h-11 w-11 place-items-center rounded-full text-fg transition-colors duration-200 hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
 
-function ToolButton({ label, disabled, pressed, onClick, children }: { label: string; disabled?: boolean; pressed?: boolean; onClick: () => void; children: ReactNode }) {
+function ToolButton({ label, disabled, pressed, tight, onClick, children }: { label: string; disabled?: boolean; pressed?: boolean; tight?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <motion.button
       type="button"
@@ -110,14 +120,14 @@ function ToolButton({ label, disabled, pressed, onClick, children }: { label: st
       whileTap={disabled ? undefined : { scale: 0.9 }}
       transition={PRESS}
       onClick={onClick}
-      className={`${TOOL} aria-pressed:bg-invert-bg aria-pressed:text-invert-fg aria-pressed:hover:bg-invert-bg`}
+      className={`${TOOL} aria-pressed:bg-invert-bg aria-pressed:text-invert-fg aria-pressed:hover:bg-invert-bg ${tight ? "h-10!" : ""}`}
     >
       {children}
     </motion.button>
   );
 }
 
-function Tools() {
+function Tools({ vertical = false }: { vertical?: boolean }) {
   const canUndo = useStudio((state) => state.past.length > 0);
   const canRedo = useStudio((state) => state.future.length > 0);
   const undo = useStudio((state) => state.undo);
@@ -131,12 +141,12 @@ function Tools() {
 
   return (
     <div className="relative">
-      <div role="toolbar" aria-label="Design tools" className={`glass-panel flex w-fit items-center rounded-full p-1 ${REFRACT}`}>
-        <ToolButton label="Undo" disabled={!canUndo} onClick={undo}><ArrowUUpLeft size={18} /></ToolButton>
-        <ToolButton label="Redo" disabled={!canRedo} onClick={redo}><ArrowUUpRight size={18} /></ToolButton>
-        <ToolButton label="Reset to where you began" disabled={!changed} onClick={reset}><ArrowCounterClockwise size={18} /></ToolButton>
-        <ToolButton label="Start a new design" onClick={() => setConfirming(true)}><Plus size={18} /></ToolButton>
-        <ToolButton label="Saved designs" pressed={step === "saved"} onClick={() => setStep(step === "saved" ? "shape" : "saved")}><BookmarkSimple size={18} /></ToolButton>
+      <div role="toolbar" aria-label="Design tools" aria-orientation={vertical ? "vertical" : "horizontal"} className={`glass-panel flex w-fit items-center rounded-full p-1 ${vertical ? "flex-col" : ""} ${REFRACT}`}>
+        <ToolButton tight={vertical} label="Undo" disabled={!canUndo} onClick={undo}><ArrowUUpLeft size={18} /></ToolButton>
+        <ToolButton tight={vertical} label="Redo" disabled={!canRedo} onClick={redo}><ArrowUUpRight size={18} /></ToolButton>
+        <ToolButton tight={vertical} label="Reset to where you began" disabled={!changed} onClick={reset}><ArrowCounterClockwise size={18} /></ToolButton>
+        <ToolButton tight={vertical} label="Start a new design" onClick={() => setConfirming(true)}><Plus size={18} /></ToolButton>
+        <ToolButton tight={vertical} label="Saved designs" pressed={step === "saved"} onClick={() => setStep(step === "saved" ? "shape" : "saved")}><BookmarkSimple size={18} /></ToolButton>
       </div>
       <AnimatePresence>
         {confirming ? (
@@ -146,7 +156,7 @@ function Tools() {
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={SPRING}
             style={{ transformOrigin: "top left" }}
-            className="glass-panel absolute left-0 top-[calc(100%+8px)] z-10 grid w-[280px] gap-2 rounded-[22px] bg-bg/90 p-4 text-[13px]"
+            className={`glass-panel absolute z-10 grid w-[280px] gap-2 rounded-[22px] bg-bg/90 p-4 text-[13px] ${vertical ? "left-[calc(100%+8px)] top-0" : "left-0 top-[calc(100%+8px)]"}`}
           >
             <p>Leave this design? Unsaved changes will be lost.</p>
             <div className="flex gap-2">
@@ -196,12 +206,12 @@ function Dock({ issues, compact = false, onPick }: { issues: Issues; compact?: b
               if (!active) setStep(item.key);
               onPick?.(item.key, active);
             }}
-            className={`relative grid h-[54px] place-content-center justify-items-center gap-0.5 rounded-[22px] text-center leading-none transition-colors duration-200 ${compact ? "text-[11px] tracking-[-0.015em]" : "min-w-[92px] text-[12px]"} ${active ? "font-medium text-invert-fg" : "text-fg hover:bg-fg/[0.07]"}`}
+            className={`relative grid h-[54px] place-content-center justify-items-center gap-0.5 rounded-[22px] text-center leading-none transition-colors duration-200 ${compact ? "text-[12px] tracking-[-0.01em]" : "min-w-[92px] text-[12px]"} ${active ? "font-medium text-invert-fg" : "text-fg hover:bg-fg/[0.07]"}`}
           >
             <StepIcon size={20} weight={active ? "fill" : "regular"} aria-hidden />
             <span>
               <span className="sr-only">Step {position + 1} of {DOCK_STEPS.length}: </span>
-              {item.label}
+              {compact ? (COMPACT_LABELS[item.key] ?? item.label) : item.label}
             </span>
             {flagged.has(item.key) ? (
               <span className="absolute right-3 top-2 h-2 w-2 rounded-full bg-danger">
@@ -517,13 +527,14 @@ function SheetHandle({ controls }: { controls: ReturnType<typeof useSheet> }) {
 
 function useStageMotion(y: MotionValue<number>, viewport: number, snaps: Snaps, visibleFull: number, visiblePeek: number) {
   const stageHeight = viewport - visiblePeek;
-  const centerOf = (visible: number) => NAV_BOTTOM_PX + (viewport - visible - NAV_BOTTOM_PX) / 2;
+  const clearBottom = (visible: number, reserved: number) => viewport - visible - reserved;
+  const centerOf = (visible: number, reserved: number) => (STAGE_TOP_PX + clearBottom(visible, reserved)) / 2;
   const home = stageHeight / 2;
   const halfVisible = visibleFull - snaps.half;
-  const fit = (visible: number) => Math.min(1, (viewport - visible - NAV_BOTTOM_PX + 28) / (stageHeight * 0.62));
+  const fit = (visible: number, reserved: number) => Math.min(1, (clearBottom(visible, reserved) - STAGE_TOP_PX) / (stageHeight * BAG_SHARE));
   const input = [snaps.full, snaps.half, snaps.peek];
-  const stageY = useTransform(y, input, [centerOf(visibleFull) - home, centerOf(halfVisible) - home, centerOf(visiblePeek) - home]);
-  const stageScale = useTransform(y, input, [fit(visibleFull), fit(halfVisible), PEEK_STAGE_SCALE]);
+  const stageY = useTransform(y, input, [centerOf(visibleFull, 0) - home, centerOf(halfVisible, PICKER_PX) - home, centerOf(visiblePeek, PICKER_PX) - home]);
+  const stageScale = useTransform(y, input, [fit(visibleFull, 0), fit(halfVisible, PICKER_PX), PEEK_STAGE_SCALE]);
   return { stageHeight, stageY, stageScale };
 }
 
@@ -543,12 +554,18 @@ function MobileLayout({ issues, savedKey, actions, nameError }: { issues: Issues
       <motion.div className="absolute inset-x-0 top-0" style={{ height: stageHeight, y: stageY, scale: stageScale }}>
         <Stage webgl={webgl} />
       </motion.div>
-      <div className="absolute left-2 top-[72px] z-10"><Tools /></div>
+      <div className="absolute left-[max(8px,env(safe-area-inset-left))] top-[72px] z-10"><Tools /></div>
       <motion.aside
         ref={sheet}
         aria-label="Design controls"
         className="fixed inset-x-2 bottom-0 z-10 mx-auto max-w-[620px]"
         style={{ height: visibleFull, y }}
+        onFocusCapture={(event) => {
+          const field = event.target;
+          if (!field.matches("input:not([type=range]), textarea")) return;
+          settle("full");
+          window.setTimeout(() => field.scrollIntoView({ block: "nearest" }), 380);
+        }}
       >
         {webgl.available ? (
           <motion.div className="absolute right-0 top-[-56px]" style={{ opacity: pickerOpacity }}>
@@ -578,11 +595,36 @@ function MobileLayout({ issues, savedKey, actions, nameError }: { issues: Issues
   );
 }
 
+function LandscapeLayout({ issues, savedKey, actions, nameError }: { issues: Issues; savedKey: number; actions: DesignActions; nameError?: string }) {
+  const webgl = useWebgl();
+  const panelWidth = "min(44vw, 372px)";
+  const leftInset = "max(8px, env(safe-area-inset-left))";
+  const rightInset = "max(8px, env(safe-area-inset-right))";
+  return (
+    <>
+      <div className="absolute bottom-[70px] left-0 top-[120px]" style={{ right: `calc(${panelWidth} + ${rightInset} + 8px)` }}><Stage webgl={webgl} /></div>
+      <div className="absolute top-[72px] z-10" style={{ left: leftInset }}><Tools vertical /></div>
+      {webgl.available ? (
+        <div className="absolute top-[72px] z-10" style={{ left: `calc(${leftInset} + 60px)` }}><ViewPicker /></div>
+      ) : null}
+      <div className={`glass-panel absolute bottom-2 z-10 rounded-[26px] p-1 ${REFRACT}`} style={{ left: leftInset, right: `calc(${panelWidth} + ${rightInset} + 8px)` }}>
+        <Dock issues={issues} compact />
+      </div>
+      <aside aria-label="Design controls" className="glass-panel absolute bottom-2 top-[72px] z-10 flex flex-col rounded-[24px]" style={{ right: rightInset, width: panelWidth }}>
+        <div className="shrink-0 pb-1.5 pt-2"><SheetSummary actions={actions} nameError={nameError} sidePopover /></div>
+        <div className="min-h-0 flex-1 overflow-hidden"><StepPanel issues={issues} savedKey={savedKey} /></div>
+        <div className="shrink-0 p-1.5"><BagBar actions={actions} /></div>
+      </aside>
+    </>
+  );
+}
+
 function Workspace() {
   const spec = useStudio((state) => state.spec);
   const undo = useStudio((state) => state.undo);
   const redo = useStudio((state) => state.redo);
   const desktop = useIsDesktop();
+  const shortLandscape = useIsShortLandscape();
   const [savedKey, setSavedKey] = useState(0);
   const issues = useMemo(() => collectIssues(spec), [spec]);
   const blocked = issues.size ? [...issues.values()][0]! : null;
@@ -602,7 +644,7 @@ function Workspace() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  const Layout = desktop ? DesktopLayout : MobileLayout;
+  const Layout = desktop ? DesktopLayout : shortLandscape ? LandscapeLayout : MobileLayout;
   return (
     <>
       <div className="fixed inset-0 z-[25] overflow-hidden bg-[radial-gradient(85%_75%_at_38%_46%,var(--bg),var(--surface)_58%,var(--line))]">
@@ -678,7 +720,7 @@ export function Studio({ initial, notice }: { initial: StudioInitial; notice: st
   if (phase === "loading") {
     return (
       <div className="grid h-dvh place-items-center pt-[68px]" role="status">
-        <p className="text-xs uppercase tracking-[0.14em] text-muted">Preparing the atelier</p>
+        <p className="text-sm text-muted">Loading the bag</p>
       </div>
     );
   }

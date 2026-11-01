@@ -1,9 +1,10 @@
 import { and, asc, count, desc, eq, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { BESPOKE_STATUSES, type BespokeStatus } from "@/lib/bespoke/status";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/order-status";
 import { db, schema } from "@/lib/server/db";
 import { param, type SearchParams } from "./format";
 
-const { categories, contactMessages, newsletterSubscribers, orders, products, promoCodes, users, variants } = schema;
+const { bespokeRequestImages, bespokeRequests, categories, contactMessages, newsletterSubscribers, orders, products, promoCodes, users, variants } = schema;
 
 export const PAGE_SIZE = 30;
 export const LOW_STOCK_LIMIT = 5;
@@ -178,3 +179,40 @@ export const listSubscribers = (offset: number) =>
   db.select().from(newsletterSubscribers).orderBy(desc(newsletterSubscribers.createdAt)).limit(PAGE_SIZE).offset(offset);
 
 export const allSubscribers = () => db.select().from(newsletterSubscribers).orderBy(desc(newsletterSubscribers.createdAt));
+
+const isBespokeStatus = (value: string): value is BespokeStatus => (BESPOKE_STATUSES as readonly string[]).includes(value);
+const bespokeFilter = (status: string) => (isBespokeStatus(status) ? eq(bespokeRequests.status, status) : undefined);
+
+export const countBespoke = (status: string) => db.$count(bespokeRequests, bespokeFilter(status));
+
+export const listBespoke = (status: string, offset: number) =>
+  db
+    .select({
+      id: bespokeRequests.id,
+      number: bespokeRequests.number,
+      status: bespokeRequests.status,
+      name: bespokeRequests.name,
+      email: bespokeRequests.email,
+      country: bespokeRequests.country,
+      productType: bespokeRequests.productType,
+      estimateLowCents: bespokeRequests.estimateLowCents,
+      estimateHighCents: bespokeRequests.estimateHighCents,
+      quotedPriceCents: bespokeRequests.quotedPriceCents,
+      createdAt: bespokeRequests.createdAt,
+    })
+    .from(bespokeRequests)
+    .where(bespokeFilter(status))
+    .orderBy(desc(bespokeRequests.createdAt))
+    .limit(PAGE_SIZE)
+    .offset(offset);
+
+export async function getBespoke(id: string) {
+  const [request] = await db.select().from(bespokeRequests).where(eq(bespokeRequests.id, id));
+  if (!request) return null;
+  const images = await db
+    .select({ id: bespokeRequestImages.id, position: bespokeRequestImages.position, filename: bespokeRequestImages.filename, byteSize: bespokeRequestImages.byteSize })
+    .from(bespokeRequestImages)
+    .where(eq(bespokeRequestImages.requestId, id))
+    .orderBy(asc(bespokeRequestImages.position));
+  return { request, images };
+}

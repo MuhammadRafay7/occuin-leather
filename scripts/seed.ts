@@ -102,7 +102,14 @@ const PRODUCTS: Seed[] = [
   { slug: "brogued-dress-belt", name: "Brogued Dress Belt", category: "leather-belts", price: 4500, color: "Tan", sizes: BELT, images: ["/images/tan-belt.jpg"], description: "Bridle leather with hand-punched broguing and a solid brass pin buckle.", composition: "100% bridle leather" },
 ];
 
+function refuseRemoteDatabase() {
+  const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname;
+  if (["localhost", "127.0.0.1"].includes(host) || process.env.ALLOW_REMOTE_SEED === "true") return;
+  throw new Error(`Refusing to seed ${host}. It wipes the catalogue. Set ALLOW_REMOTE_SEED=true to override.`);
+}
+
 async function seed() {
+  refuseRemoteDatabase();
   await db.execute(sql`truncate table products, categories, promo_codes restart identity cascade`);
   await db.insert(schema.categories).values(
     CATEGORIES.map(([slug, name, department], position) => ({ slug, name, department, position })),

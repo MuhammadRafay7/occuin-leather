@@ -128,7 +128,7 @@ export function BagDrawer({ count }: { count: number }) {
 
   return (
     <>
-      <Link href="/bag" onClick={openFromLink} className="whitespace-nowrap hover:opacity-60">Bag ({count})</Link>
+      <Link href="/bag" onClick={openFromLink} className="-mx-2 flex h-11 items-center whitespace-nowrap px-2 hover:opacity-60">Bag ({count})</Link>
       <dialog
         ref={dialog}
         aria-label="Your bag"
@@ -158,7 +158,7 @@ export function BagDrawer({ count }: { count: number }) {
             if (event.pointerType === "touch") drag.start(event);
           }}
           style={{ x }}
-          className="glass-panel absolute inset-y-2 right-2 flex w-[calc(100vw-16px)] max-w-[420px] touch-pan-y flex-col overflow-hidden rounded-[28px]"
+          className="glass-panel absolute bottom-[max(8px,env(safe-area-inset-bottom))] right-[max(8px,env(safe-area-inset-right))] top-[max(8px,env(safe-area-inset-top))] flex w-[calc(100vw-16px)] max-w-[420px] touch-pan-y flex-col overflow-hidden rounded-[28px]"
         >
           <div className="flex h-16 shrink-0 items-center justify-between pl-5 pr-3">
             <h2 className="font-display text-2xl">Your bag{bag ? ` (${bag.count})` : ""}</h2>
@@ -174,7 +174,7 @@ export function BagDrawer({ count }: { count: number }) {
           ) : bag.lines.length ? (
             <>
               <BagLines view={view} />
-              <div className="grid shrink-0 gap-4 border-t border-fg/10 p-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+              <div className="grid shrink-0 gap-4 border-t border-fg/10 p-5 short:gap-2 short:p-3">
                 <ShippingProgress merchandise={merchandise} />
                 <div className="flex items-baseline justify-between text-sm">
                   <span>Subtotal</span>

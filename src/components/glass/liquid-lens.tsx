@@ -144,7 +144,7 @@ export function LensFrame({ image, priority, ratio, sizes, onOpen }: Props) {
       onPointerMove={move}
       onPointerLeave={() => setActive(false)}
       style={{ "--ratio": ratio } as CSSProperties}
-      className="relative aspect-square w-full shrink-0 snap-start lg:aspect-auto lg:h-full"
+      className="relative aspect-square max-h-[calc(100svh-96px)] w-full shrink-0 snap-start md:aspect-[4/3] lg:aspect-auto lg:h-full lg:max-h-none"
     >
       <button
         type="button"
@@ -160,7 +160,7 @@ export function LensFrame({ image, priority, ratio, sizes, onOpen }: Props) {
 
       <span
         aria-hidden
-        className={`glass-panel pointer-events-none absolute bottom-3 left-3 flex h-8 items-center gap-1.5 rounded-full pl-2.5 pr-3 text-[11px] text-fg transition-opacity duration-200 ${active ? "opacity-0" : "opacity-100"}`}
+        className={`glass-panel pointer-events-none absolute bottom-3 left-3 flex h-8 items-center gap-1.5 rounded-full pl-2.5 pr-3 text-xs text-fg transition-opacity duration-200 ${active ? "opacity-0" : "opacity-100"}`}
       >
         <MagnifyingGlassPlus size={14} />
         <span className="lg:hidden">Tap to zoom</span>

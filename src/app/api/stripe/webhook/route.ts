@@ -1,29 +1,38 @@
 import { eq } from "drizzle-orm";
+import type Stripe from "stripe";
 import { db, schema } from "@/lib/server/db";
-import { markPaid, moveOrder, stripe } from "@/lib/server/orders";
+import { cancelCheckoutSession, settleCheckoutSession, stripe } from "@/lib/server/orders";
+
+async function handle(event: Stripe.Event) {
+  if (event.type === "checkout.session.completed") {
+    if (event.data.object.payment_status === "paid") await settleCheckoutSession(event.data.object);
+  }
+  if (event.type === "checkout.session.async_payment_succeeded") await settleCheckoutSession(event.data.object);
+  if (event.type === "checkout.session.async_payment_failed") await cancelCheckoutSession(event.data.object, "Payment failed");
+  if (event.type === "checkout.session.expired") await cancelCheckoutSession(event.data.object, "Payment session expired");
+}
 
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const signature = request.headers.get("stripe-signature");
   if (!stripe || !secret || !signature) return new Response("Not configured", { status: 400 });
 
-  let event;
+  let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(await request.text(), signature, secret);
   } catch {
     return new Response("Invalid signature", { status: 400 });
   }
 
-  const fresh = await db.insert(schema.stripeEvents).values({ id: event.id }).onConflictDoNothing().returning();
-  if (!fresh.length) return Response.json({ received: true });
+  const [seen] = await db.select({ id: schema.stripeEvents.id }).from(schema.stripeEvents).where(eq(schema.stripeEvents.id, event.id));
+  if (seen) return Response.json({ received: true });
 
-  if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
-    const session = event.data.object;
-    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.stripeSessionId, session.id));
-    if (order && event.type === "checkout.session.completed") {
-      await markPaid(order.id, typeof session.payment_intent === "string" ? session.payment_intent : null);
-    }
-    if (order && event.type === "checkout.session.expired") await moveOrder(order.id, "cancelled", { note: "Payment session expired" });
+  try {
+    await handle(event);
+  } catch (error) {
+    console.error(`[stripe] ${event.id} failed`, error);
+    return new Response("Try again", { status: 500 });
   }
+  await db.insert(schema.stripeEvents).values({ id: event.id }).onConflictDoNothing();
   return Response.json({ received: true });
 }

@@ -5,11 +5,10 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useOptimistic, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
-import { useFloatingClearance, useFocusTrap, useIsoLayoutEffect } from "@/components/glass/hooks";
+import { useFloatingClearance, useFocusTrap, useIsoLayoutEffect, useScrollLock } from "@/components/glass/hooks";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
 import { Button } from "@/components/ui";
 import { PRICE_RANGES, SORTS, activeFilterCount, shopHref, toggled, type ShopState } from "@/lib/shop-params";
-import { DensityToggle } from "./density";
 import { swatchHex } from "./swatches";
 
 type Props = { path: string; state: ShopState; colors: string[]; sizes: string[]; resultCount: number };
@@ -20,7 +19,7 @@ const SHEET_WIDTH = 460;
 const SIDE_GAP = 8;
 const TOP_GAP = 88;
 const DOCK_BUTTON = "flex h-11 items-center gap-2 rounded-full px-4 text-[13px] text-fg transition hover:bg-fg/5 active:scale-[0.96]";
-const PILL = "flex h-10 items-center justify-center rounded-full border px-4 text-[13px] transition active:scale-[0.96]";
+const PILL = "flex h-11 items-center justify-center rounded-full border px-4 text-[13px] transition active:scale-[0.96] lg:h-10";
 const CHOSEN = "border-invert-bg bg-invert-bg text-invert-fg";
 const OPEN = "border-fg/25 text-fg hover:border-fg";
 
@@ -57,6 +56,7 @@ export function ShopDock({ path, state, colors, sizes, resultCount }: Props) {
     if (grid && grid.getBoundingClientRect().bottom < window.innerHeight / 2) grid.scrollIntoView({ behavior: "auto" });
   }, []);
   useFocusTrap(sheet, panel !== null, close);
+  useScrollLock(shell, panel !== null);
 
   function showResults() {
     setPanel(null);
@@ -262,12 +262,6 @@ export function ShopDock({ path, state, colors, sizes, resultCount }: Props) {
                         })}
                       </div>
                     </Group>
-
-                    <div className="hidden md:block">
-                      <Group title="Columns">
-                        <DensityToggle />
-                      </Group>
-                    </div>
                   </div>
 
                   <div className="grid shrink-0 grid-cols-[auto_1fr] items-center gap-4 border-t border-fg/10 p-3 pl-5">
@@ -277,7 +271,7 @@ export function ShopDock({ path, state, colors, sizes, resultCount }: Props) {
                       aria-disabled={active === 0}
                       tabIndex={active === 0 ? -1 : undefined}
                       onClick={(event) => apply(event, clearAll)}
-                      className={`text-[13px] underline underline-offset-4 ${active === 0 ? "pointer-events-none opacity-40" : "hover:opacity-60"}`}
+                      className={`flex min-h-11 items-center text-[13px] underline underline-offset-4 lg:block lg:min-h-0 ${active === 0 ? "pointer-events-none opacity-40" : "hover:opacity-60"}`}
                     >
                       Clear all
                     </Link>

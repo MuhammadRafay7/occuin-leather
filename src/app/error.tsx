@@ -9,7 +9,7 @@ export default function ErrorPage({ error, retry }: { error: unknown; retry: () 
   }, [error]);
 
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <EmptyState
         title="Something went wrong"
         body="This page did not load. Try again, and if it keeps happening, let us know through the contact page."

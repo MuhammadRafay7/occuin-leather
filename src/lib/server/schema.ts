@@ -19,6 +19,9 @@ import {
 import type { DesignSpec } from "../studio/spec";
 import type { DesignQuote } from "../studio/pricing";
 import { ORDER_STATUSES } from "../order-status";
+import type { BespokeDesign } from "../bespoke/design";
+import { DEPOSIT_PERCENT } from "../bespoke/config";
+import { BESPOKE_STATUSES } from "../bespoke/status";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -26,6 +29,7 @@ const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull(
 export const roleEnum = pgEnum("role", ["customer", "admin"]);
 export const orderStatusEnum = pgEnum("order_status", ORDER_STATUSES);
 export const departmentEnum = pgEnum("department", ["women", "men", "leather"]);
+export const bespokeStatusEnum = pgEnum("bespoke_status", BESPOKE_STATUSES);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -136,13 +140,16 @@ export const cartItems = pgTable(
     cartId: uuid("cart_id").notNull().references(() => carts.id, { onDelete: "cascade" }),
     variantId: uuid("variant_id").references(() => variants.id, { onDelete: "cascade" }),
     designId: uuid("design_id").references(() => designs.id, { onDelete: "cascade" }),
+    bespokeRequestId: uuid("bespoke_request_id").references(() => bespokeRequests.id, { onDelete: "cascade" }),
+    bespokePart: text("bespoke_part"),
     quantity: integer("quantity").notNull(),
   },
   (t) => [
-    check("cart_items_one_target", sql`num_nonnulls(${t.variantId}, ${t.designId}) = 1`),
+    check("cart_items_one_target", sql`num_nonnulls(${t.variantId}, ${t.designId}, ${t.bespokeRequestId}) = 1`),
     check("cart_items_quantity", sql`${t.quantity} between 1 and 10`),
     uniqueIndex("cart_items_variant_unique").on(t.cartId, t.variantId),
     uniqueIndex("cart_items_design_unique").on(t.cartId, t.designId),
+    uniqueIndex("cart_items_bespoke_unique").on(t.cartId, t.bespokeRequestId, t.bespokePart),
   ],
 );
 
@@ -198,6 +205,8 @@ export const orderItems = pgTable(
     orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
     variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
     designId: uuid("design_id").references(() => designs.id, { onDelete: "set null" }),
+    bespokeRequestId: uuid("bespoke_request_id").references(() => bespokeRequests.id, { onDelete: "set null" }),
+    bespokePart: text("bespoke_part"),
     name: text("name").notNull(),
     detail: text("detail").notNull(),
     image: text("image"),
@@ -245,6 +254,8 @@ export const promoCodes = pgTable("promo_codes", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   active: boolean("active").notNull().default(true),
   timesUsed: integer("times_used").notNull().default(0),
+  maxUses: integer("max_uses"),
+  oncePerCustomer: boolean("once_per_customer").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -279,3 +290,114 @@ export const contactMessages = pgTable("contact_messages", {
   handled: boolean("handled").notNull().default(false),
   createdAt: createdAt(),
 });
+
+export const bespokeRequests = pgTable(
+  "bespoke_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: serial("number").notNull().unique(),
+    status: bespokeStatusEnum("status").notNull().default("new"),
+    ownerKey: text("owner_key"),
+    acceptedOwnerKey: text("accepted_owner_key"),
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+    depositPercent: integer("deposit_percent").notNull().default(DEPOSIT_PERCENT),
+    depositPaidAt: timestamp("deposit_paid_at", { withTimezone: true }),
+    balanceRequestedAt: timestamp("balance_requested_at", { withTimezone: true }),
+    balancePaidAt: timestamp("balance_paid_at", { withTimezone: true }),
+    balanceOrderId: uuid("balance_order_id").references(() => orders.id, { onDelete: "set null" }),
+    quotedAt: timestamp("quoted_at", { withTimezone: true }),
+    quoteExpiresAt: timestamp("quote_expires_at", { withTimezone: true }),
+    quoteEmailedAt: timestamp("quote_emailed_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    changeMessage: text("change_message"),
+    changeRequestedAt: timestamp("change_requested_at", { withTimezone: true }),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    country: text("country").notNull(),
+    phone: text("phone"),
+    productType: text("product_type").notNull(),
+    notes: text("notes").notNull().default(""),
+    design: jsonb("design").$type<BespokeDesign>().notNull(),
+    estimateLowCents: integer("estimate_low_cents").notNull(),
+    estimateHighCents: integer("estimate_high_cents").notNull(),
+    quotedPriceCents: integer("quoted_price_cents"),
+    adminNote: text("admin_note").notNull().default(""),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("bespoke_estimate_order", sql`${t.estimateLowCents} > 0 and ${t.estimateHighCents} >= ${t.estimateLowCents}`),
+    check("bespoke_quote_positive", sql`${t.quotedPriceCents} is null or ${t.quotedPriceCents} > 0`),
+    check("bespoke_deposit_percent", sql`${t.depositPercent} between 1 and 100`),
+    index("bespoke_requests_status_idx").on(t.status),
+    index("bespoke_requests_owner_idx").on(t.ownerKey),
+  ],
+);
+
+export const bespokeRequestImages = pgTable(
+  "bespoke_request_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id").notNull().references(() => bespokeRequests.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    contentType: text("content_type").notNull(),
+    filename: text("filename").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("bespoke_image_size", sql`${t.byteSize} between 1 and 4194304`),
+    uniqueIndex("bespoke_image_position").on(t.requestId, t.position),
+  ],
+);
+
+export const bespokeTokens = pgTable(
+  "bespoke_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    requestId: uuid("request_id").notNull().references(() => bespokeRequests.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`now() + interval '90 days'`),
+  },
+  (t) => [index("bespoke_tokens_request_idx").on(t.requestId)],
+);
+
+export const bespokeDesigns = pgTable(
+  "bespoke_designs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerKey: text("owner_key").notNull(),
+    name: text("name").notNull(),
+    design: jsonb("design").$type<BespokeDesign>().notNull(),
+    shareTokenHash: text("share_token_hash").unique(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("bespoke_designs_owner_idx").on(t.ownerKey)],
+);
+
+export const bespokeLogos = pgTable(
+  "bespoke_logos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerKey: text("owner_key").notNull(),
+    filename: text("filename").notNull(),
+    rightsConfirmedAt: timestamp("rights_confirmed_at", { withTimezone: true }).notNull(),
+    png: bytea("png").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("bespoke_logos_owner_idx").on(t.ownerKey)],
+);
+
+export const bespokeMessages = pgTable(
+  "bespoke_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id").notNull().references(() => bespokeRequests.id, { onDelete: "cascade" }),
+    author: text("author").notNull(),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [check("bespoke_message_author", sql`${t.author} in ('customer', 'team')`), index("bespoke_messages_request_idx").on(t.requestId)],
+);

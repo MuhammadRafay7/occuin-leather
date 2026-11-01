@@ -3,15 +3,13 @@ import Link from "next/link";
 import { ContactForm } from "@/components/contact-form";
 import { PageTitle } from "@/components/ui";
 import { BRAND } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Contact",
-  description: "Write to OCCUIN about an order, a return, a product or the design studio.",
-};
+export const metadata: Metadata = pageMeta("/contact");
 
 export default function ContactPage() {
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <PageTitle>Contact</PageTitle>
       <div className="grid gap-12 md:grid-cols-12">
         <div className="max-w-xl md:col-span-6">

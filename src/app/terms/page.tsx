@@ -3,15 +3,13 @@ import Link from "next/link";
 import { LegalTemplateNotice, Section, Sections } from "@/components/prose";
 import { PageTitle } from "@/components/ui";
 import { BRAND } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Terms",
-  description: "The terms that apply when you use the OCCUIN store and place an order.",
-};
+export const metadata: Metadata = pageMeta("/terms");
 
 export default function TermsPage() {
   return (
-    <div className="px-4 pt-24 md:px-8">
+    <div className="px-page pt-header">
       <PageTitle>Terms</PageTitle>
       <LegalTemplateNotice />
       <Sections>
