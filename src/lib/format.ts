@@ -1,4 +1,4 @@
-export const BRAND = { name: "OCCUIN", tagline: "Leather goods, made to last.", email: "care@occuin.example" };
+export const BRAND = { name: "OCCUIN", tagline: "Leather goods, made to last.", email: "occuin.co@gmail.com" };
 
 export const FREE_SHIPPING_CENTS = 20000;
 export const SHIPPING_METHODS = {

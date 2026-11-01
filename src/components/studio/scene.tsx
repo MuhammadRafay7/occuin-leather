@@ -53,6 +53,7 @@ type Quality = { suffix: string; paint: number; flap: number; detail: number; hd
 
 const STANDARD_QUALITY: Quality = { suffix: "", paint: 2048, flap: 1536, detail: 1, hdri: "/hdri/studio_small_09_2k.hdr", shadow: 2048, dpr: [1, 2] };
 const LOW_QUALITY: Quality = { suffix: "-1k", paint: 1024, flap: 768, detail: 0.6, hdri: "/hdri/studio_small_09_1k.hdr", shadow: 1024, dpr: [1, 1.5] };
+const LITE_QUALITY: Quality = { suffix: "-640", paint: 768, flap: 640, detail: 0.6, hdri: "/hdri/hero-env.hdr", shadow: 1024, dpr: [1, 1.5] };
 const STILL_QUALITY: Quality = { suffix: "", paint: 4096, flap: 3072, detail: 1.5, hdri: "/hdri/studio_small_09_2k.hdr", shadow: 4096, dpr: [1, 1] };
 
 function detectQuality(): Quality {
@@ -159,7 +160,7 @@ function useBagAssets(spec: DesignSpec, quality: Quality, reveal: boolean) {
   return { bag, surfaces, generation: built?.generation ?? 0, settled };
 }
 
-function useGrainTiles(spec: DesignSpec, suffix: string, anisotropy: number) {
+function useGrainTiles(spec: DesignSpec, suffix: string, anisotropy: number, essentialOnly: boolean) {
   const [tiles, setTiles] = useState<Tiles>({});
   const finishes = allFinishes(spec).join(",");
   useEffect(() => {
@@ -175,7 +176,8 @@ function useGrainTiles(spec: DesignSpec, suffix: string, anisotropy: number) {
       live = false;
     };
   }, [finishes, suffix, anisotropy]);
-  return { tiles, loaded: finishes.split(",").every((finish) => tiles[finish as FinishKey]) };
+  const required = essentialOnly ? [spec.panels.primary.finish, spec.panels.gusset.finish] : (finishes.split(",") as FinishKey[]);
+  return { tiles, loaded: required.every((finish) => tiles[finish]) };
 }
 
 function addSoftbox(texture: THREE.DataTexture, rotation: number) {
@@ -954,7 +956,7 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
     setMaxAnisotropy(max);
     return max;
   }, [gl]);
-  const { tiles, loaded } = useGrainTiles(active, tier.suffix, anisotropy);
+  const { tiles, loaded } = useGrainTiles(active, tier.suffix, anisotropy, spin);
   const environment = useEnvironment(quality.hdri);
   const materials = useMaterials();
   useDressedMaterials(materials, active, surfaces, tiles);
@@ -1016,7 +1018,7 @@ function Studio({ spec, interactive, spin, reduced, quality, onReady }: { spec: 
 
 export default function Scene({ spec, interactive = true, spin = false, lite = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; onReady?: () => void; onContextLost?: () => void }) {
   const [reduced, setReduced] = useState(false);
-  const [quality] = useState(() => (lite ? LOW_QUALITY : detectQuality()));
+  const [quality] = useState(() => (lite ? LITE_QUALITY : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
 
   useEffect(() => {

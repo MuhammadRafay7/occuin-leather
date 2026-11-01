@@ -11,7 +11,9 @@ import { PRESETS } from "@/lib/studio/presets";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { COLORS, type ColorKey, type DesignSpec } from "@/lib/studio/spec";
 
-const Scene = dynamic(() => import("@/components/studio/scene"), { ssr: false });
+const loadScene = () => import("@/components/studio/scene");
+if (typeof window !== "undefined") void loadScene();
+const Scene = dynamic(loadScene, { ssr: false });
 
 const FORMS = [
   { key: "tote", label: "Tote", slug: "cabas-38" },
@@ -27,9 +29,9 @@ function dress(spec: DesignSpec, color: ColorKey): DesignSpec {
 }
 
 const HERO_FILES = [
-  { href: "/hdri/studio_small_09_1k.hdr", as: "fetch" },
-  { href: "/textures/pebble-normal-1k.webp", as: "image" },
-  { href: "/textures/pebble-detail-1k.webp", as: "image" },
+  { href: "/hdri/hero-env.hdr", as: "fetch" },
+  { href: "/textures/pebble-normal-640.webp", as: "image" },
+  { href: "/textures/pebble-detail-640.webp", as: "image" },
 ];
 
 export function Hero() {
@@ -55,7 +57,7 @@ export function Hero() {
           <Image src="/images/hero/tote-cognac.webp" alt="A cognac leather tote" fill sizes="(min-width: 768px) 70vw, 100vw" className="object-contain" />
         ) : null}
         {available ? (
-          <div className={`absolute inset-0 touch-pan-y transition duration-700 ease-out max-md:pointer-events-none ${ready ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}>
+          <div className={`absolute inset-0 touch-pan-y transition duration-300 ease-out max-md:pointer-events-none ${ready ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}>
             <Scene spec={spec} spin lite onReady={() => setReady(true)} onContextLost={lost} />
           </div>
         ) : null}
