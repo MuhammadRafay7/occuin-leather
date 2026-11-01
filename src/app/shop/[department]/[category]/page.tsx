@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { ShopView } from "@/components/shop/shop-view";
-import { DEPARTMENTS } from "@/lib/server/catalog";
 import { categoryPath, resolveCategory, resolveDepartment } from "@/lib/server/shop";
 import type { RawParams } from "@/lib/shop-params";
 
@@ -15,8 +14,9 @@ async function resolve(params: Props["params"]) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { department, category, path } = await resolve(params);
-  const title = department === "leather" ? category.name : `${DEPARTMENTS[department].name}: ${category.name.toLowerCase()}`;
-  return { title, description: `Shop ${title.toLowerCase()} at OCCUIN.`, alternates: { canonical: path } };
+  const who = { women: " for women", men: " for men", leather: "" }[department];
+  const title = `Leather ${category.name.toLowerCase()}${who}`;
+  return { title, description: `${title}, handmade to order in Pakistan and shipped worldwide from OCCUIN.`, alternates: { canonical: path } };
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {

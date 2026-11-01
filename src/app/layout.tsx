@@ -12,14 +12,16 @@ const bodoni = Bodoni_Moda({ subsets: ["latin"], variable: "--font-bodoni", styl
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
-  title: { default: `${BRAND.name} | ${BRAND.tagline}`, template: `%s | ${BRAND.name}` },
-  description: "Leather bags, laptop bags, wallets and belts for women and men, made in Pakistan and shipped worldwide, and a studio where you design your own piece from nothing.",
-  openGraph: { siteName: BRAND.name, type: "website", images: ["/images/studio/tote.webp"] },
+  title: { default: `${BRAND.name} | Handmade Leather Bags and Custom Leather Goods`, template: `%s | ${BRAND.name}` },
+  description: "Handmade leather bags, laptop bags, wallets and belts for women and men. Design your own in live 3D. Made in Pakistan and shipped worldwide.",
+  openGraph: { siteName: BRAND.name, type: "website", images: [{ url: "/images/og.jpg", width: 1200, height: 630, alt: "OCCUIN handmade leather tote" }] },
+  twitter: { card: "summary_large_image", images: ["/images/og.jpg"] },
 };
 
 export const viewport: Viewport = {
   themeColor: "#fafafa",
   colorScheme: "light",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

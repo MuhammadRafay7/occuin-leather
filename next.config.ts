@@ -3,6 +3,14 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
+  redirects: async () => [
+    {
+      source: "/:path*",
+      has: [{ type: "host", value: "www.occuin.com" }],
+      destination: "https://occuin.com/:path*",
+      permanent: true,
+    },
+  ],
   headers: async () =>
     ["/hdri/:path*", "/textures/:path*"].map((source) => ({
       source,

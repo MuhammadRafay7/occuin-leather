@@ -4,7 +4,7 @@ import { CookieNotice } from "./cookie-notice";
 import { NewsletterForm } from "./newsletter-form";
 
 const COLUMNS = [
-  { title: "Shop", links: [["Bags", "/shop/leather/bags"], ["Jackets", "/shop/leather/jackets"], ["Small goods", "/shop/leather/small-goods"], ["Belts", "/shop/leather/belts"], ["Design your own", "/studio"]] },
+  { title: "Shop", links: [["Women", "/shop/women"], ["Men", "/shop/men"], ["Laptop bags", "/shop/leather/laptop-bags"], ["Totes", "/shop/leather/totes"], ["Wallets and cards", "/shop/leather/wallets"], ["Design your own", "/studio"]] },
   { title: "Help", links: [["Contact", "/contact"], ["Track an order", "/track"], ["Shipping and returns", "/shipping-returns"], ["Size guide", "/size-guide"], ["Questions", "/faq"]] },
   { title: "House", links: [["About", "/about"], ["Leather care", "/care"], ["Privacy", "/privacy"], ["Terms", "/terms"]] },
 ];

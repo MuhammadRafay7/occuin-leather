@@ -117,8 +117,19 @@ export default async function ProductPage({ params }: Props) {
       : {}),
   };
 
+  const breadcrumbs = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Shop", item: new URL(`/shop/${product.department}`, APP_URL).href },
+      { "@type": "ListItem", position: 2, name: product.categoryName, item: new URL(categoryPath(product.department, product.categorySlug), APP_URL).href },
+      { "@type": "ListItem", position: 3, name: product.name },
+    ],
+  };
+
   return (
     <div className="pb-20 lg:pb-0">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs).replace(/</g, "\\u003c") }} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
