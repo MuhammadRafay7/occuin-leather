@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "127.0.0.1:55434:5432"
+    environment:
+      POSTGRES_USER: orsel
+      POSTGRES_PASSWORD: orsel
+      POSTGRES_DB: orsel
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orsel"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

@@ -1,0 +1,55 @@
+{
+  "name": "occuin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:up": "docker compose up -d --wait db",
+    "db:push": "drizzle-kit push --force",
+    "db:seed": "tsx --env-file=.env scripts/seed.ts",
+    "setup": "npm run db:up && npm run db:push && npm run db:seed",
+    "render:catalog": "tsx scripts/render-catalog.ts"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "drizzle-orm": "^0.45.4",
+    "motion": "^14.9.0",
+    "next": "^16.4.3",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.5",
+    "stripe": "^23.1.0",
+    "three": "^0.187.0",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.3",
+    "playwright": "^1.64.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
