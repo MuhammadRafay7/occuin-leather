@@ -55,7 +55,7 @@ function catalogJobs(): Job[] {
   return STARTING_POINTS.filter((point) => point.key !== "blank").map(({ key }) => ({
     name: key,
     files: { still: path.join(STUDIO_DIR, `${key}.webp`) },
-    still: { spec: PRESETS[key], width: CATALOG_SIZE, height: CATALOG_SIZE, frames: FRAMES, background: STUDIO_GREY, ...FRAMING[key] },
+    still: { spec: PRESETS[key], width: CATALOG_SIZE, height: CATALOG_SIZE, frames: FRAMES, background: STUDIO_GREY, exposure: PRESETS[key].panels.primary.color === "noir" ? 1.9 : undefined, ...FRAMING[key] },
   }));
 }
 

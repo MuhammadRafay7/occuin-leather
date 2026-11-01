@@ -720,7 +720,7 @@ function softenAlpha(pixels: Float32Array, width: number, height: number, radius
     let total = 0;
     for (let index = -radius; index <= radius; index++) total += line[Math.min(length - 1, Math.max(0, index))]!;
     for (let index = 0; index < length; index++) {
-      write(index, total / span);
+      write(index, Math.max(0, total / span));
       total += line[Math.min(length - 1, index + radius + 1)]! - line[Math.max(0, index - radius)]!;
     }
   };
@@ -737,6 +737,7 @@ function softenAlpha(pixels: Float32Array, width: number, height: number, radius
       });
     }
   }
+  for (let index = 3; index < pixels.length; index += 4) pixels[index] = Math.min(1, pixels[index]! ** 1.9);
   return pixels;
 }
 

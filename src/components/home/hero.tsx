@@ -46,7 +46,7 @@ export function Hero() {
             transition={{ type: "spring", bounce: 0, duration: 0.5 }}
             className="absolute inset-0"
           >
-            <Image src={image} alt={`${COLORS[color].name} leather ${form.label.toLowerCase()} bag`} fill preload sizes="(min-width: 768px) 70vw, 100vw" className="object-contain drop-shadow-[0_40px_50px_rgb(0_0_0/0.45)]" />
+            <Image src={image} alt={`${COLORS[color].name} leather ${form.label.toLowerCase()} bag`} fill preload sizes="(min-width: 768px) 70vw, 100vw" className="object-contain" />
           </motion.div>
         </AnimatePresence>
       </div>
