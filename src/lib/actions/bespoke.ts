@@ -6,13 +6,14 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { designSchema, LIMITS, type BespokeDesign } from "@/lib/bespoke/design";
 import { customerSchema } from "@/lib/bespoke/submission";
+import { recordAudit } from "@/lib/server/audit";
 import { ensureOwnerKey, getOwnerKey, getUser, hitRateLimit, requireAdmin, tokenHash } from "@/lib/server/auth";
 import { acceptQuote, createQuestion, findByToken, findOwned, listPastDesigns, postCustomerMessage, postTeamMessage, recordBalancePaid, requestBalance, requestChange } from "@/lib/server/bespoke";
 import { addBespoke } from "@/lib/server/cart";
 import { clientIp } from "@/lib/server/client-ip";
 import { db, schema } from "@/lib/server/db";
 import { balanceBuyable, bespokeBuyable, BESPOKE_STATUS_LABELS, bespokeRef } from "@/lib/bespoke/status";
-import { whatsappNumber } from "@/lib/server/whatsapp";
+import { contactDetails } from "@/lib/server/settings";
 import type { ActionResult } from "./admin";
 
 const { bespokeDesigns } = schema;
@@ -138,7 +139,7 @@ export async function shareSavedBespoke(designId: string) {
 
 export async function askContext(): Promise<AskContext> {
   const user = await getUser();
-  return { whatsapp: whatsappNumber(), name: user?.name ?? "", email: user?.email ?? "" };
+  return { whatsapp: (await contactDetails()).whatsapp, name: user?.name ?? "", email: user?.email ?? "" };
 }
 
 export async function askTeam(input: { name: string; email: string; country: string; question: string; design: unknown }) {
@@ -177,33 +178,36 @@ export async function loadPastDesigns(): Promise<PastDesign[]> {
 const adminResult = (ok: boolean, text: string): ActionResult => ({ ok, message: text });
 
 export async function askForBalance(requestId: string): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   if (!id.safeParse(requestId).success) return adminResult(false, "We could not find that request.");
   if (await hitRateLimit(`bespoke-balance:${requestId}`, 5, 3600)) return adminResult(false, "This customer has been emailed several times this hour. Try again later.");
   const result = await requestBalance(requestId);
   if ("error" in result) return adminResult(false, result.error ?? "That did not save. Try again.");
+  await recordAudit(admin, { action: "bespoke.balance_request", targetType: "bespoke", targetId: requestId, detail: result.emailed ? "Email sent" : "Email failed" });
   revalidatePath("/admin", "layout");
   return result.emailed ? adminResult(true, "Balance requested. The customer has a private link by email.") : adminResult(false, "Balance requested, but the email could not be sent. Try again.");
 }
 
 export async function markBalancePaid(requestId: string, note: string): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.string().trim().min(5, "Say how the balance was paid.").max(500, "Keep the note under 500 characters.").safeParse(note);
   if (!parsed.success) return adminResult(false, parsed.error.issues[0]?.message ?? "Say how the balance was paid.");
   if (!id.safeParse(requestId).success) return adminResult(false, "We could not find that request.");
   const result = await recordBalancePaid(requestId, parsed.data);
   if ("error" in result) return adminResult(false, result.error ?? "That did not save. Try again.");
+  await recordAudit(admin, { action: "bespoke.balance_paid", targetType: "bespoke", targetId: requestId, detail: parsed.data });
   revalidatePath("/", "layout");
   return adminResult(true, "Balance recorded as paid.");
 }
 
 export async function replyToCustomer(requestId: string, text: string): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.string().transform((value) => value.replace(/[^\P{Cc}\n\t]/gu, "").trim()).pipe(z.string().min(1, "Write a reply first.").max(MESSAGE_MAX, "Keep it under 2,000 characters.")).safeParse(text);
   if (!parsed.success) return adminResult(false, parsed.error.issues[0]?.message ?? "Write a reply first.");
   if (!id.safeParse(requestId).success) return adminResult(false, "We could not find that request.");
   const result = await postTeamMessage(requestId, parsed.data);
   if ("error" in result) return adminResult(false, result.error ?? "That did not save. Try again.");
+  await recordAudit(admin, { action: "bespoke.reply", targetType: "bespoke", targetId: requestId, detail: result.emailed ? "Email sent" : "Saved, email failed" });
   revalidatePath("/admin", "layout");
   return result.emailed ? adminResult(true, "Reply sent.") : adminResult(false, "Reply saved, but the email could not be sent.");
 }

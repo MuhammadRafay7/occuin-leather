@@ -8,11 +8,12 @@ import { createPortal } from "react-dom";
 import { useFocusTrap, useScrollLock } from "@/components/glass/hooks";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
 
-type Props = { links: { href: string; label: string }[]; signedIn: boolean; isAdmin: boolean };
+type NavItem = { href: string; label: string };
+type Props = { links: NavItem[]; moreLinks: NavItem[]; signedIn: boolean; isAdmin: boolean };
 
 const subscribe = () => () => undefined;
 
-export function HeaderMenu({ links, signedIn, isAdmin }: Props) {
+export function HeaderMenu({ links, moreLinks, signedIn, isAdmin }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const [shownPath, setShownPath] = useState(pathname);
@@ -43,9 +44,7 @@ export function HeaderMenu({ links, signedIn, isAdmin }: Props) {
     { href: signedIn ? "/account" : "/login", label: signedIn ? "Account" : "Sign in" },
     { href: "/search", label: "Search" },
     { href: "/wishlist", label: "Saved items" },
-    { href: "/track", label: "Track an order" },
-    { href: "/about", label: "About" },
-    { href: "/contact", label: "Contact" },
+    ...moreLinks,
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
@@ -78,8 +77,8 @@ export function HeaderMenu({ links, signedIn, isAdmin }: Props) {
                     ))}
                   </nav>
                   <nav aria-label="More" className="mt-6 grid text-muted short:mt-2 short:grid-cols-2">
-                    {extra.map((item) => (
-                      <Link key={item.href} href={item.href} onClick={close} className="flex min-h-11 items-center">{item.label}</Link>
+                    {extra.map((item, index) => (
+                      <Link key={`${item.href}-${index}`} href={item.href} onClick={close} className="flex min-h-11 items-center">{item.label}</Link>
                     ))}
                   </nav>
                 </motion.div>

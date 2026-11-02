@@ -4,13 +4,16 @@ import sharp from "sharp";
 import { z } from "zod";
 import { designSchema, LIMITS, PRODUCT_TYPES, type BespokeDesign } from "@/lib/bespoke/design";
 import { estimateDesign, visibleDesign } from "@/lib/bespoke/estimate";
+import { getBespokeRules, getDelivery, getPricing } from "@/lib/server/content";
 import { balanceCents, balanceOwedCents, bespokeRef, depositCents, PRICE_LOCKED, quoteExpiry, type BespokeStatus } from "@/lib/bespoke/status";
 import { customerSchema, parseDesign, sniffImage, type ImageType } from "@/lib/bespoke/submission";
-import { BESPOKE_NOTE, BRAND, longDate, money } from "@/lib/format";
+import { bespokeNote, BRAND, longDate, money } from "@/lib/format";
+import { contactDetails, getSettings, paymentModeOf } from "./settings";
 import { ensureOwnerKey, hitRateLimit, tokenHash } from "./auth";
 import { clientIp } from "./client-ip";
 import { db, schema } from "./db";
 import { linkKey } from "./link-key";
+import { orderToken } from "./order-access";
 import { addBespoke } from "./cart";
 import { sendMail } from "./mail";
 import { sendWhatsApp } from "./whatsapp";
@@ -89,11 +92,11 @@ async function notify(reference: string, requestId: string, link: string, custom
         "",
         `Follow your request here: ${appUrl()}${link}`,
         "",
-        BESPOKE_NOTE,
+        bespokeNote(await getDelivery()),
       ].join("\n"),
     }),
     sendMail({
-      to: BRAND.email,
+      to: (await contactDetails()).email,
       subject: `New bespoke request ${reference}`,
       text: [
         `${customer.name} <${customer.email}>, ${customer.country}${customer.phone ? `, ${customer.phone}` : ""}`,
@@ -122,7 +125,7 @@ export async function createBespokeRequest(form: FormData): Promise<BespokeResul
   const ownerKey = await ensureOwnerKey();
   if (!(await ownsLogos(design, ownerKey))) return { ok: false, error: "One of the logos could not be found. Upload it again." };
 
-  const estimate = estimateDesign(design);
+  const estimate = estimateDesign(design, await getPricing());
   if (!estimate) return { ok: false, error: "Draw at least one closed piece." };
 
   const [byAddress, byEmail] = await Promise.all([
@@ -139,6 +142,7 @@ export async function createBespokeRequest(form: FormData): Promise<BespokeResul
     const [created] = await tx
       .insert(schema.bespokeRequests)
       .values({
+        depositPercent: (await getBespokeRules()).depositPercent,
         ownerKey,
         name,
         email,
@@ -226,7 +230,7 @@ export async function sendQuoteEmail(requestId: string) {
       `See your design, accept the price or ask for a change here: ${appUrl()}${link}`,
       `This quote is open until ${longDate(request.quoteExpiresAt)}.`,
       "",
-      BESPOKE_NOTE,
+      bespokeNote(await getDelivery()),
     ].join("\n"),
   }).catch(() => false);
   if (sent) await db.update(schema.bespokeRequests).set({ quoteEmailedAt: new Date() }).where(eq(schema.bespokeRequests.id, request.id));
@@ -244,7 +248,7 @@ export async function applyAdminUpdate({ id, status, quotedPriceCents, depositPe
   const now = new Date();
   await db
     .update(schema.bespokeRequests)
-    .set({ status, quotedPriceCents, depositPercent, adminNote, updatedAt: now, ...(requote ? { quotedAt: now, quoteExpiresAt: quoteExpiry(now), quoteEmailedAt: null } : {}) })
+    .set({ status, quotedPriceCents, depositPercent, adminNote, updatedAt: now, ...(requote ? { quotedAt: now, quoteExpiresAt: quoteExpiry(now, (await getBespokeRules()).quoteDays), quoteEmailedAt: null } : {}) })
     .where(eq(schema.bespokeRequests.id, id));
   if (CLOSED_STATUSES.includes(status)) {
     await db
@@ -278,7 +282,7 @@ export async function requestChange(requestId: string, message: string) {
     .returning({ number: schema.bespokeRequests.number });
   if (!updated) return { error: "This quote can no longer be changed." };
   await sendMail({
-    to: BRAND.email,
+    to: (await contactDetails()).email,
     subject: `Change requested on ${bespokeRef(updated.number)}`,
     text: [message, "", `${appUrl()}/admin/bespoke/${requestId}`].join("\n"),
   }).catch(() => false);
@@ -312,7 +316,7 @@ export async function requestBalance(requestId: string) {
     text: [
       `Your piece ${reference} is ready for its final payment. The balance is ${money(owed)}.`,
       "",
-      `Pay it here. This link is private to you: ${link}`,
+      paymentModeOf(await getSettings()) === "whatsapp" ? `Place it here, then we arrange payment with you. This link is private to you: ${link}` : `Pay it here. This link is private to you: ${link}`,
       "",
       "We ship as soon as the balance is paid.",
     ].join("\n"),
@@ -328,7 +332,7 @@ export async function recordBalancePaid(requestId: string, note: string) {
     if (!request || !owed) return { error: "No balance is due on this request." };
     if (request.balanceOrderId) {
       const [held] = await tx.select({ status: schema.orders.status }).from(schema.orders).where(eq(schema.orders.id, request.balanceOrderId));
-      if (held?.status === "pending") return { error: "The customer is paying this balance at checkout right now." };
+      if (held?.status === "pending") return { error: "An unpaid order holds this balance. Mark that order as paid, or cancel it first." };
     }
     await tx.update(schema.bespokeRequests).set({ balancePaidAt: new Date(), updatedAt: new Date() }).where(eq(schema.bespokeRequests.id, request.id));
     await tx.delete(schema.cartItems).where(and(eq(schema.cartItems.bespokeRequestId, request.id), eq(schema.cartItems.bespokePart, "balance")));
@@ -338,6 +342,16 @@ export async function recordBalancePaid(requestId: string, note: string) {
     }
     return { ok: true };
   });
+}
+
+export async function unpaidOrderLink(request: { orderId: string | null; balanceOrderId: string | null }) {
+  const held = [request.orderId, request.balanceOrderId].filter((id) => id !== null);
+  if (!held.length) return null;
+  const [order] = await db
+    .select({ id: schema.orders.id })
+    .from(schema.orders)
+    .where(and(inArray(schema.orders.id, held), eq(schema.orders.status, "pending"), eq(schema.orders.paymentMethod, "whatsapp")));
+  return order ? `/orders/${order.id}?token=${orderToken(order.id)}` : null;
 }
 
 const shareSignature = (requestId: string, expires: string) => createHmac("sha256", linkKey("bespoke-quote-share")).update(`${requestId}.${expires}`).digest();
@@ -377,9 +391,9 @@ export async function awaitingReply(requestIds: string[]) {
   return new Set(rows.filter((row) => row.author === "customer").map((row) => row.requestId));
 }
 
-function questionMail(reference: string, requestId: string, body: string, customer: { name: string; email: string }) {
+async function questionMail(reference: string, requestId: string, body: string, customer: { name: string; email: string }) {
   return sendMail({
-    to: BRAND.email,
+    to: (await contactDetails()).email,
     subject: `Question on ${reference}`,
     text: [`${customer.name} <${customer.email}> asks:`, "", body, "", `Reply here: ${appUrl()}/admin/bespoke/${requestId}`].join("\n"),
   }).catch(() => false);
@@ -390,7 +404,7 @@ export async function createQuestion(asker: Asker, question: string, rawDesign: 
   const parsed = designSchema.safeParse(rawDesign);
   if (!parsed.success) return { error: "This design could not be attached. Finish the piece you are drawing and try again." };
   const design: BespokeDesign = visibleDesign(parsed.data);
-  const estimate = estimateDesign(design);
+  const estimate = estimateDesign(design, await getPricing());
   if (!estimate) return { error: "Draw at least one closed piece so we can see what you mean." };
   const ownerKey = await ensureOwnerKey();
   if (!(await ownsLogos(design, ownerKey))) return { error: "One of the logos could not be found. Upload it again." };
@@ -402,6 +416,7 @@ export async function createQuestion(asker: Asker, question: string, rawDesign: 
       .insert(schema.bespokeRequests)
       .values({
         status: "question",
+        depositPercent: (await getBespokeRules()).depositPercent,
         ownerKey,
         name: asker.name,
         email: asker.email,

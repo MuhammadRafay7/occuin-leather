@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db, schema } from "@/lib/server/db";
-import { cancelCheckoutSession, settleCheckoutSession, stripe } from "@/lib/server/orders";
+import { cancelCheckoutSession, settleCheckoutSession, stripe, syncStripeRefund } from "@/lib/server/orders";
 
 async function handle(event: Stripe.Event) {
   if (event.type === "checkout.session.completed") {
@@ -10,6 +10,7 @@ async function handle(event: Stripe.Event) {
   if (event.type === "checkout.session.async_payment_succeeded") await settleCheckoutSession(event.data.object);
   if (event.type === "checkout.session.async_payment_failed") await cancelCheckoutSession(event.data.object, "Payment failed");
   if (event.type === "checkout.session.expired") await cancelCheckoutSession(event.data.object, "Payment session expired");
+  if (event.type === "charge.refunded") await syncStripeRefund(event.data.object);
 }
 
 export async function POST(request: Request) {

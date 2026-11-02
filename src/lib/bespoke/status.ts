@@ -16,7 +16,7 @@ export const bespokeRef = (number: number) => `BR-${String(number).padStart(6, "
 
 export const QUOTE_DAYS = 30;
 export const quoteExpired = (expiresAt: Date | string | null, now = new Date()) => Boolean(expiresAt && new Date(expiresAt) < now);
-export const quoteExpiry = (from = new Date()) => new Date(from.getTime() + QUOTE_DAYS * 86_400_000);
+export const quoteExpiry = (from = new Date(), days = QUOTE_DAYS) => new Date(from.getTime() + days * 86_400_000);
 export const PRICE_LOCKED: readonly BespokeStatus[] = ["accepted", "in_production", "completed"];
 
 export const bespokeBuyable = (request: { status: BespokeStatus; quotedPriceCents: number | null; quoteExpiresAt: Date | string | null }, now = new Date()) =>

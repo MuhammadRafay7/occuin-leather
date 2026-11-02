@@ -7,12 +7,15 @@ import { createPortal } from "react-dom";
 
 type Item = { href: string; label: string };
 const SPRING = { type: "spring", bounce: 0, duration: 0.35 } as const;
+const PANEL_GAP = 8;
 const subscribe = () => () => undefined;
 
 export function NavLinks({ links, menus }: { links: Item[]; menus: Record<string, Item[]> }) {
   const [active, setActive] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  const [panelTop, setPanelTop] = useState(0);
   const closing = useRef(0);
+  const bar = useRef<HTMLElement>(null);
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   const hold = () => window.clearTimeout(closing.current);
@@ -23,6 +26,7 @@ export function NavLinks({ links, menus }: { links: Item[]; menus: Record<string
   const enter = (href: string) => {
     hold();
     setActive(href);
+    setPanelTop((bar.current?.closest("header")?.getBoundingClientRect().bottom ?? 0) + PANEL_GAP);
     setMenu(menus[href]?.length ? href : null);
   };
 
@@ -42,6 +46,7 @@ export function NavLinks({ links, menus }: { links: Item[]; menus: Record<string
   return (
     <>
       <nav
+        ref={bar}
         aria-label="Main"
         onPointerLeave={() => {
           setActive(null);
@@ -78,8 +83,8 @@ export function NavLinks({ links, menus }: { links: Item[]; menus: Record<string
                   transition={SPRING}
                   onPointerEnter={hold}
                   onPointerLeave={release}
-                  style={{ transformOrigin: "top left" }}
-                  className="glass-panel fixed left-4 top-[76px] z-30 hidden min-w-64 rounded-[24px] p-3 lg:block"
+                  style={{ transformOrigin: "top left", top: panelTop }}
+                  className="glass-panel fixed left-4 z-30 hidden min-w-64 rounded-[24px] p-3 lg:block"
                 >
                   <ul className="grid text-sm">
                     {items.map((item) => (

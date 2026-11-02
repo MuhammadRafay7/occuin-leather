@@ -1,24 +1,17 @@
 import type { Metadata } from "next";
-import { isValidElement, type ReactNode } from "react";
-import { BRAND, MAKING_TIME, SHIPPING_METHODS, deliveryEstimate, money, shippingCents, type ShippingMethod } from "@/lib/format";
+import { fillTokens, plainText, type TokenValues } from "@/lib/content/rich-text";
+import { BRAND, money, shippingCents, shippingLabel, type Delivery, type ShippingMethod, type ShippingRates } from "@/lib/format";
 import { COUNTRIES } from "@/lib/validation";
 
 export const SITE_URL = "https://occuin.com";
 
 const SUFFIX = ` | ${BRAND.name}`;
-const DEFAULT_IMAGE = { url: "/images/og.jpg", width: 1200, height: 630, alt: "OCCUIN handmade leather tote" };
 const TITLE_RANGE = { min: 50, max: 60 };
 const DESCRIPTION_RANGE = { min: 120, max: 155 };
 
-const days = (text: string) => text.match(/\d+/g)!.map(Number) as [number, number];
-const arrival = (method: ShippingMethod) => deliveryEstimate(method).replace("Arrives in ", "");
-
-const TRACKED = arrival("standard");
-const EXPRESS = arrival("express");
-
 export const absoluteUrl = (path: string) => (path === "/" ? SITE_URL : new URL(path, SITE_URL).href);
 
-type PageMeta = { title: string; description: string };
+export type PageMeta = { title: string; description: string };
 
 export const META: Record<string, PageMeta> = {
   "/": {
@@ -131,7 +124,7 @@ export const META: Record<string, PageMeta> = {
   },
   "/shipping-returns": {
     title: "Shipping and Returns: Delivery Times, Policy | OCCUIN",
-    description: `Orders arrive in ${TRACKED} tracked or ${EXPRESS} by express. Returns are accepted only if a piece arrives faulty or differs from your order.`,
+    description: "Orders arrive in {{standard_arrival}} tracked or {{express_arrival}} by express. Returns are accepted only if a piece arrives faulty or differs from your order.",
   },
   "/size-guide": {
     title: "Leather Belt Size Guide and Laptop Bag Fit | OCCUIN",
@@ -157,7 +150,17 @@ export const META: Record<string, PageMeta> = {
 
 type ImageRef = { url: string; width?: number; height?: number; alt: string };
 
-function buildMetadata({ title, description }: PageMeta, path: string, image: ImageRef = DEFAULT_IMAGE): Metadata {
+export type SeoContext = { pages: Record<string, PageMeta>; image: ImageRef; tokens: TokenValues };
+
+function override(path: string, context: SeoContext, fallback: PageMeta): PageMeta {
+  const custom = context.pages[path];
+  return {
+    title: fillTokens(custom?.title || fallback.title, context.tokens),
+    description: fillTokens(custom?.description || fallback.description, context.tokens),
+  };
+}
+
+function buildMetadata({ title, description }: PageMeta, path: string, image: ImageRef): Metadata {
   const url = absoluteUrl(path);
   const shared = { ...image, url: absoluteUrl(image.url) };
   return {
@@ -169,10 +172,11 @@ function buildMetadata({ title, description }: PageMeta, path: string, image: Im
   };
 }
 
-export function pageMeta(path: string, imageUrl?: string): Metadata {
+export function pageMeta(path: string, context: SeoContext, imageUrl?: string): Metadata {
   const entry = META[path];
   if (!entry) throw new Error(`No SEO entry for ${path}`);
-  return buildMetadata(entry, path, imageUrl ? { url: imageUrl, alt: entry.title.replace(SUFFIX, "") } : undefined);
+  const meta = override(path, context, entry);
+  return buildMetadata(meta, path, imageUrl ? { url: imageUrl, alt: meta.title.replace(SUFFIX, "") } : context.image);
 }
 
 function fit(candidates: string[], { min, max }: { min: number; max: number }) {
@@ -182,18 +186,18 @@ function fit(candidates: string[], { min, max }: { min: number; max: number }) {
   return fallback.length <= max ? fallback : fallback.slice(0, fallback.lastIndexOf(" ", max));
 }
 
-export function categoryMeta(path: string, categoryName: string, imageUrl?: string): Metadata {
-  if (META[path]) return pageMeta(path, imageUrl);
+export function categoryMeta(path: string, categoryName: string, context: SeoContext, imageUrl?: string): Metadata {
+  if (META[path]) return pageMeta(path, context, imageUrl);
   const name = categoryName.toLowerCase();
   const who = path.startsWith("/shop/women") ? " for Women" : path.startsWith("/shop/men") ? " for Men" : "";
   const heading = `Leather ${categoryName}${who}`;
   return buildMetadata(
-    {
+    override(path, context, {
       title: fit([`${heading}, Handmade to Order${SUFFIX}`, `${heading}, Made to Order${SUFFIX}`, `${heading}${SUFFIX}`], TITLE_RANGE),
       description: fit([`Leather ${name}${who.toLowerCase()} from OCCUIN, each piece made to order in Pakistan and shipped worldwide with tracked delivery.`, `Leather ${name}${who.toLowerCase()}, made to order in Pakistan and shipped worldwide.`], DESCRIPTION_RANGE),
-    },
+    }),
     path,
-    imageUrl ? { url: imageUrl, alt: heading } : undefined,
+    imageUrl ? { url: imageUrl, alt: heading } : context.image,
   );
 }
 
@@ -224,7 +228,8 @@ type ProductSummary = {
   variants: { priceCents: number }[];
 };
 
-export function productMeta(product: ProductSummary): Metadata {
+export function productMeta(product: ProductSummary, context: SeoContext): Metadata {
+  const tracked = context.tokens.standard_arrival ?? "";
   const copy = PRODUCT_COPY[product.slug];
   const heading = copy?.title ?? `${product.name} Leather ${product.categoryName}`;
   const lead = copy?.lead ?? product.description.replace(/full-grain\s+/gi, "");
@@ -235,15 +240,16 @@ export function productMeta(product: ProductSummary): Metadata {
   );
   const description = fit(
     [
-      `${lead} ${price}, made to order in Pakistan and shipped worldwide with tracked delivery in ${TRACKED}.`,
-      `${lead} ${price}, made to order in Pakistan, arrives in ${TRACKED} tracked.`,
+      `${lead} ${price}, made to order in Pakistan and shipped worldwide with tracked delivery in ${tracked}.`,
+      `${lead} ${price}, made to order in Pakistan, arrives in ${tracked} tracked.`,
       `${lead} ${price}, made to order in Pakistan.`,
       `${lead} ${price}, made to order.`,
     ],
     DESCRIPTION_RANGE,
   );
   const image = product.images[0];
-  return buildMetadata({ title, description }, `/product/${product.slug}`, image ? { url: image, alt: product.name } : undefined);
+  const path = `/product/${product.slug}`;
+  return buildMetadata(override(path, context, { title, description }), path, image ? { url: image, alt: product.name } : context.image);
 }
 
 export const jsonLd = (data: unknown) => ({ __html: JSON.stringify(data).replace(/</g, "\\u003c") });
@@ -259,16 +265,16 @@ const RETURN_POLICY = {
   description: "Every piece is made to order, so change of mind returns are not accepted. A piece that arrives faulty or differs from the order is replaced or refunded.",
 };
 
-export const organizationData = () => ({
+export const organizationData = (email: string, description: string) => ({
   "@context": "https://schema.org",
   "@type": "Organization",
   "@id": ORGANIZATION_ID,
   name: BRAND.name,
   url: SITE_URL,
   logo: absoluteUrl("/logo-green.svg"),
-  email: BRAND.email,
-  description: "Handmade leather bags, laptop bags, wallets and belts for women and men, made to order in Pakistan and shipped worldwide.",
-  contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: BRAND.email, url: absoluteUrl("/contact") },
+  email,
+  description,
+  contactPoint: { "@type": "ContactPoint", contactType: "customer support", email, url: absoluteUrl("/contact") },
   hasMerchantReturnPolicy: RETURN_POLICY,
 });
 
@@ -292,30 +298,23 @@ export const breadcrumbData = (items: { name: string; path: string }[]) => ({
   itemListElement: items.map((item, index) => ({ "@type": "ListItem", position: index + 1, name: item.name, item: absoluteUrl(item.path) })),
 });
 
-function nodeText(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(nodeText).join("");
-  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
-  return "";
-}
-
-export const faqData = (items: { question: string; answer: ReactNode }[]) => ({
+export const faqData = (items: { question: string; answer: string }[]) => ({
   "@context": "https://schema.org",
   "@type": "FAQPage",
   mainEntity: items.map((item) => ({
     "@type": "Question",
     name: item.question,
-    acceptedAnswer: { "@type": "Answer", text: nodeText(item.answer) },
+    acceptedAnswer: { "@type": "Answer", text: plainText(item.answer) },
   })),
 });
 
-function shippingDetails(priceCents: number, method: ShippingMethod) {
-  const [handlingMin, handlingMax] = days(MAKING_TIME);
-  const [arrivalMin, arrivalMax] = days(arrival(method));
+function shippingDetails(priceCents: number, method: ShippingMethod, rates: ShippingRates, delivery: Delivery) {
+  const { makingMinDays: handlingMin, makingMaxDays: handlingMax } = delivery;
+  const [arrivalMin, arrivalMax] = method === "standard" ? [delivery.standardMinDays, delivery.standardMaxDays] : [delivery.expressMinDays, delivery.expressMaxDays];
   return {
     "@type": "OfferShippingDetails",
-    shippingLabel: SHIPPING_METHODS[method].label,
-    shippingRate: { "@type": "MonetaryAmount", value: (shippingCents(priceCents, method) / 100).toFixed(2), currency: "USD" },
+    shippingLabel: shippingLabel(method, delivery),
+    shippingRate: { "@type": "MonetaryAmount", value: (shippingCents(priceCents, method, rates) / 100).toFixed(2), currency: "USD" },
     shippingDestination: { "@type": "DefinedRegion", addressCountry: COUNTRY_CODES },
     deliveryTime: {
       "@type": "ShippingDeliveryTime",
@@ -334,7 +333,7 @@ type ProductData = ProductSummary & {
 
 type OfferOption = { sku: string; color: string; size: string; priceCents: number; stock: number };
 
-export function productData(product: ProductData, options: OfferOption[], reviews: { average: number; total: number }) {
+export function productData(product: ProductData, options: OfferOption[], reviews: { average: number; total: number }, rates: ShippingRates, delivery: Delivery) {
   const url = absoluteUrl(`/product/${product.slug}`);
   const form = product.studioPreset?.form;
   return {
@@ -361,7 +360,7 @@ export function productData(product: ProductData, options: OfferOption[], review
       itemCondition: "https://schema.org/NewCondition",
       availability: `https://schema.org/${option.stock > 0 ? "InStock" : "OutOfStock"}`,
       seller: { "@type": "Organization", "@id": ORGANIZATION_ID, name: BRAND.name },
-      shippingDetails: [shippingDetails(option.priceCents, "standard"), shippingDetails(option.priceCents, "express")],
+      shippingDetails: [shippingDetails(option.priceCents, "standard", rates, delivery), shippingDetails(option.priceCents, "express", rates, delivery)],
       hasMerchantReturnPolicy: RETURN_POLICY,
     })),
     ...(reviews.total

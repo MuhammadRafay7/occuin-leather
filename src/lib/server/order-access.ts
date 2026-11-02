@@ -7,8 +7,8 @@ const TOKEN_SECONDS = 3600;
 const signature = (orderId: string, expires: string) =>
   createHmac("sha256", linkKey("order-link")).update(`${orderId}.${expires}`).digest();
 
-export function orderToken(orderId: string) {
-  const expires = String(Math.floor(Date.now() / 1000) + TOKEN_SECONDS);
+export function orderToken(orderId: string, seconds = TOKEN_SECONDS) {
+  const expires = String(Math.floor(Date.now() / 1000) + seconds);
   return `${expires}.${signature(orderId, expires).toString("base64url")}`;
 }
 

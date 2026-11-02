@@ -5,6 +5,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { SPRING, Segments } from "@/components/studio/controls";
+import { StudioRatesProvider, type StudioRates } from "@/components/studio/rates";
 import { AskTeam } from "./ask-team";
 import { Board } from "./board";
 import { MakeabilityPanel, useMakeability } from "./makeability-panel";
@@ -309,7 +310,15 @@ function Mobile() {
   );
 }
 
-export function Creator({ initial = null }: { initial?: Initial }) {
+export function Creator({ initial = null, rates }: { initial?: Initial; rates: StudioRates }) {
+  return (
+    <StudioRatesProvider rates={rates}>
+      <CreatorStage initial={initial} />
+    </StudioRatesProvider>
+  );
+}
+
+function CreatorStage({ initial }: { initial: Initial }) {
   const phase = useCreator((state) => state.phase);
   const start = useCreator((state) => state.start);
   const sent = useCreator((state) => state.sent);

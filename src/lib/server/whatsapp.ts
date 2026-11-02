@@ -1,7 +1,7 @@
 const API_VERSION = "v21.0";
 
-export function whatsappNumber() {
-  const digits = (process.env.WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
+export function whatsappNumber(stored = "") {
+  const digits = (stored || process.env.WHATSAPP_NUMBER || "").replace(/\D/g, "");
   return digits.length >= 7 && digits.length <= 15 ? digits : null;
 }
 

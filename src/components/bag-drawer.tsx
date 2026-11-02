@@ -9,7 +9,7 @@ import { useScrollLock } from "@/components/glass/hooks";
 import { LineImage } from "@/components/line-image";
 import { readBag, type BagView } from "@/components/product/bag-actions";
 import { buttonClass } from "@/components/ui";
-import { FREE_SHIPPING_CENTS, money } from "@/lib/format";
+import { money } from "@/lib/format";
 
 type Presented = { bag: BagView; addedId: string | null };
 
@@ -20,9 +20,9 @@ const listeners = new Set<(view: Presented) => void>();
 
 export const presentBag = (view: Presented) => listeners.forEach((listener) => listener(view));
 
-function ShippingProgress({ merchandise }: { merchandise: number }) {
-  const remaining = FREE_SHIPPING_CENTS - merchandise;
-  const reached = Math.min(merchandise / FREE_SHIPPING_CENTS, 1);
+function ShippingProgress({ merchandise, threshold }: { merchandise: number; threshold: number }) {
+  const remaining = threshold - merchandise;
+  const reached = threshold > 0 ? Math.min(merchandise / threshold, 1) : 1;
   return (
     <div className="grid gap-2">
       <p className="text-[13px]">
@@ -61,7 +61,7 @@ function BagLines({ view }: { view: Presented }) {
   );
 }
 
-export function BagDrawer({ count }: { count: number }) {
+export function BagDrawer({ count, freeShippingCents }: { count: number; freeShippingCents: number }) {
   const reduceMotion = useReducedMotion();
   const transition = reduceMotion ? INSTANT : SHEET_SPRING;
   const dialog = useRef<HTMLDialogElement>(null);
@@ -123,7 +123,7 @@ export function BagDrawer({ count }: { count: number }) {
   }
 
   const bag = view?.bag;
-  const merchandise = bag ? bag.subtotalCents - bag.discountCents : 0;
+  const merchandise = bag ? bag.shippingBasisCents : 0;
   const short = bag?.lines.some((line) => line.quantity > line.available);
 
   return (
@@ -175,7 +175,7 @@ export function BagDrawer({ count }: { count: number }) {
             <>
               <BagLines view={view} />
               <div className="grid shrink-0 gap-4 border-t border-fg/10 p-5 short:gap-2 short:p-3">
-                <ShippingProgress merchandise={merchandise} />
+                <ShippingProgress merchandise={merchandise} threshold={freeShippingCents} />
                 <div className="flex items-baseline justify-between text-sm">
                   <span>Subtotal</span>
                   <span className="text-base">{money(bag.subtotalCents)}</span>

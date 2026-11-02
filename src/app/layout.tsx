@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bodoni_Moda, Geist } from "next/font/google";
 import type { ReactNode } from "react";
-import { Footer } from "@/components/footer";
-import { GlassEffects } from "@/components/glass-effects";
-import { Header } from "@/components/header";
 import { BRAND } from "@/lib/format";
 import "./globals.css";
 
@@ -28,13 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${bodoni.variable}`}>
       <body className="min-h-dvh bg-bg text-fg">
-        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-invert-bg focus:p-3 focus:text-invert-fg">
-          Skip to content
-        </a>
-        <GlassEffects />
-        <Header />
-        <main id="main">{children}</main>
-        <Footer />
+        {children}
       </body>
     </html>
   );

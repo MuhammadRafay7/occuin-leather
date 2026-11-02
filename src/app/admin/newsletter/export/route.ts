@@ -1,20 +1,12 @@
+import type { NextRequest } from "next/server";
+import { recordAudit } from "@/lib/server/audit";
 import { requireAdmin } from "@/lib/server/auth";
-import { allSubscribers } from "../../_lib/queries";
+import { csvResponse } from "../../_lib/csv";
+import { exportSubscribers } from "../../_lib/queries-people";
 
-function csvCell(value: string) {
-  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-  return `"${safe.replaceAll('"', '""')}"`;
-}
-
-export async function GET() {
-  await requireAdmin();
-  const subscribers = await allSubscribers();
-  const rows = subscribers.map((subscriber) => [subscriber.email, subscriber.createdAt.toISOString()].map(csvCell).join(","));
-  return new Response(["email,subscribed_at", ...rows].join("\r\n"), {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="orsel-newsletter.csv"',
-      "Cache-Control": "no-store",
-    },
-  });
+export async function GET(request: NextRequest) {
+  const actor = await requireAdmin();
+  const subscribers = await exportSubscribers(request.nextUrl.searchParams.get("q")?.trim() ?? "");
+  await recordAudit(actor, { action: "newsletter.export", targetType: "subscriber", detail: `${subscribers.length} rows` });
+  return csvResponse("occuin-newsletter.csv", ["email", "subscribed_at"], subscribers.map((subscriber) => [subscriber.email, subscriber.createdAt.toISOString()]));
 }

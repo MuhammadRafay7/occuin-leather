@@ -6,10 +6,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDesignToBag } from "@/lib/actions/cart";
 import { saveDesign } from "@/lib/actions/designs";
-import { deliveryEstimate, MAKING_NOTE, money, SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
+import { deliveryEstimate, makingNote, money, SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
 import { describeDesign, quoteDesign } from "@/lib/studio/pricing";
 import { designSpecSchema } from "@/lib/studio/spec";
 import { Issue, PRESS, SECONDARY, SPRING } from "./controls";
+import { useStudioRates } from "./rates";
 import { captureBridge, useStudio } from "./store";
 
 type Status = { tone: "info" | "error"; message: string } | null;
@@ -32,7 +33,8 @@ export function useDesignActions(blocked: string | null, onSaved: () => void) {
   const [status, setStatus] = useState<Status>(null);
   const [bagged, setBagged] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const quote = useMemo(() => quoteDesign(spec), [spec]);
+  const { pricing } = useStudioRates();
+  const quote = useMemo(() => quoteDesign(spec, pricing), [spec, pricing]);
   const rows = useMemo(() => describeDesign(spec), [spec]);
   const dirty = savedJson !== JSON.stringify(spec);
 
@@ -156,6 +158,7 @@ function usePopover() {
 
 function Breakdown({ actions, onClose, side = false }: { actions: DesignActions; onClose: () => void; side?: boolean }) {
   const { quote, rows } = actions;
+  const { delivery } = useStudioRates();
   return (
     <motion.div
       role="dialog"
@@ -186,12 +189,12 @@ function Breakdown({ actions, onClose, side = false }: { actions: DesignActions;
         </div>
       </dl>
       <h3 className="mt-5 font-display text-[19px]">Delivery</h3>
-      <p className={`mt-2 leading-snug ${SECONDARY}`}>{MAKING_NOTE}</p>
+      <p className={`mt-2 leading-snug ${SECONDARY}`}>{makingNote(delivery)}</p>
       <dl className="mt-2 grid gap-1.5">
         {(Object.keys(SHIPPING_METHODS) as ShippingMethod[]).map((method) => (
           <div key={method} className="flex justify-between gap-4">
             <dt className={SECONDARY}>{method === "express" ? "Express courier" : "Tracked shipping"}</dt>
-            <dd>{deliveryEstimate(method)}</dd>
+            <dd>{deliveryEstimate(method, delivery)}</dd>
           </div>
         ))}
       </dl>
@@ -317,6 +320,7 @@ function ActionIcons({ actions, onDetails, detailsOpen }: { actions: DesignActio
 export function SummaryCard({ actions, nameError }: { actions: DesignActions; nameError?: string }) {
   const { open, setOpen, area } = usePopover();
   const { quote, spec, busy, addToBag } = actions;
+  const { delivery } = useStudioRates();
   return (
     <div ref={area} className="relative">
       <AnimatePresence>{open ? <Breakdown actions={actions} onClose={() => setOpen(false)} /> : null}</AnimatePresence>
@@ -327,7 +331,7 @@ export function SummaryCard({ actions, nameError }: { actions: DesignActions; na
         <div className="flex items-end justify-between gap-4">
           <p className="font-display text-[30px] leading-none"><Price cents={quote.totalCents} /></p>
           <p className={`text-right text-[13px] leading-snug ${SECONDARY}`}>
-            {deliveryEstimate("standard")}
+            {deliveryEstimate("standard", delivery)}
             <span className="block tabular-nums">{spec.form.width} × {spec.form.height} × {spec.form.depth} mm</span>
           </p>
         </div>
@@ -352,13 +356,14 @@ export function SummaryCard({ actions, nameError }: { actions: DesignActions; na
 
 export function SheetSummary({ actions, nameError, sidePopover = false }: { actions: DesignActions; nameError?: string; sidePopover?: boolean }) {
   const { open, setOpen, area } = usePopover();
+  const { delivery } = useStudioRates();
   return (
     <div ref={area} className="relative">
       <AnimatePresence>{open ? <Breakdown actions={actions} side={sidePopover} onClose={() => setOpen(false)} /> : null}</AnimatePresence>
       <div className="flex items-center gap-1.5 px-4">
         <div className="-mt-1 grid min-w-0 flex-1">
           <NameField error={nameError} className="-mx-1 h-11 px-1 text-[19px] leading-tight" />
-          <p className={`-mt-1.5 truncate text-[13px] leading-tight ${SECONDARY}`}>{deliveryEstimate("standard")}</p>
+          <p className={`-mt-1.5 truncate text-[13px] leading-tight ${SECONDARY}`}>{deliveryEstimate("standard", delivery)}</p>
         </div>
         <ActionIcons actions={actions} detailsOpen={open} onDetails={() => setOpen(!open)} />
       </div>

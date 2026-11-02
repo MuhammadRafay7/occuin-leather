@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/seo";
 
-const PRIVATE_PATHS = ["/admin", "/account", "/api", "/bag", "/bespoke", "/checkout", "/orders", "/search", "/studio/render", "/wishlist"];
+const PRIVATE_PATHS = ["/admin", "/account", "/api", "/bag", "/bespoke", "/checkout", "/manufacturer", "/orders", "/search", "/studio/render", "/wishlist"];
 
 const NAMED_CRAWLERS = [
   "GPTBot",

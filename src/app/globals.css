@@ -74,6 +74,68 @@ textarea {
   color: var(--bg);
 }
 
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(90% 80% at 50% 42%, #3b5a50 0%, #20403a 44%, #0f211d 100%);
+  animation: intro-give-up 600ms ease 10s forwards;
+}
+
+.intro-leaving {
+  opacity: 0;
+  filter: blur(14px);
+  transform: scale(1.04);
+  transition:
+    opacity 950ms cubic-bezier(0.37, 0, 0.63, 1),
+    filter 950ms cubic-bezier(0.37, 0, 0.63, 1),
+    transform 950ms cubic-bezier(0.37, 0, 0.63, 1);
+  pointer-events: none;
+}
+
+.intro-word {
+  width: min(84vw, 640px);
+  overflow: visible;
+  fill: none;
+  filter: drop-shadow(0 0 14px rgb(244 239 230 / 0.35));
+}
+
+.intro-word path {
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: intro-write 3800ms cubic-bezier(0.37, 0, 0.63, 1) 150ms forwards;
+}
+
+@keyframes intro-write {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes intro-give-up {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-word path {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
+  .intro-leaving {
+    filter: none;
+    transform: none;
+  }
+}
+
 @layer components {
   .glass,
   .glass-panel {

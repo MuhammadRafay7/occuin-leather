@@ -1,30 +1,38 @@
-import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import Stripe from "stripe";
+import { contactDetails, demoPaymentsAllowed, getSettings, type PaymentMode } from "./settings";
 import { balanceBuyable, balanceOwedCents, bespokeBuyable, bespokeRef, depositCents } from "../bespoke/status";
 import { canTransition, stockIsHeld, type OrderStatus } from "../order-status";
 import { cartTotals, discountableCents, type PricedLine } from "../cart-totals";
-import { BESPOKE_NOTE, BRAND, deliveryEstimate, MAKING_NOTE, money, orderRef, shippingCents, type ShippingMethod } from "../format";
+import { bespokeNote, deliveryEstimate, makingNote, money, orderRef, shippingCents, type ShippingMethod, type ShippingRates } from "../format";
 import { designSpecSchema } from "../studio/spec";
 import { describeDesign, quoteDesign } from "../studio/pricing";
+import { bespokeSnapshotOf, productSnapshotOf } from "../manufacturer/snapshot";
+import { getDelivery, getPricing } from "./content";
 import { db, schema, type Transaction } from "./db";
 import { bespokeLineName, findPromo, getCart } from "./cart";
 import { sendMail } from "./mail";
+import { freezeBespokeFiles, freezeMediaPhotos } from "./order-files";
+import { privateOrderLink } from "./whatsapp-order";
 import type { ShippingAddress } from "./schema";
 
-const { bespokeRequests, cartItems, carts, designs, orderEvents, orderItems, orders, products, promoCodes, variants } = schema;
+const { bespokeRequests, cartItems, carts, designs, orderEvents, orderItems, orderRefunds, orders, products, promoCodes, stockMovements, variants } = schema;
 
 export const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-export const demoPaymentsAllowed = () => process.env.ALLOW_DEMO_PAYMENTS === "true" && process.env.NODE_ENV !== "production";
 
-export type CheckoutInput = { ownerKey: string; email: string; address: ShippingAddress; method: ShippingMethod };
+export type CheckoutInput = { ownerKey: string; email: string; address: ShippingAddress; method: ShippingMethod; rates: ShippingRates; payment?: PaymentMode };
 export type CheckoutResult = { error: string } | { orderId: string; redirectUrl: string };
 
 const PAYMENT_WINDOW_SECONDS = 3600;
+const MAX_OPEN_WHATSAPP_ORDERS = 3;
+const AUTO_CANCEL_BATCH = 25;
+const DAY_MS = 86_400_000;
 
 class StockError extends Error {}
 
 async function reservePromo(tx: Transaction, promo: typeof promoCodes.$inferSelect, input: CheckoutInput) {
-  await tx.select({ code: promoCodes.code }).from(promoCodes).where(eq(promoCodes.code, promo.code)).for("update");
+  const [locked] = await tx.select({ active: promoCodes.active }).from(promoCodes).where(eq(promoCodes.code, promo.code)).for("update");
+  if (!locked?.active) throw new StockError("That code is not valid.");
   const claimed = and(eq(orders.promoCode, promo.code), notInArray(orders.status, ["cancelled", "refunded"]));
   if (promo.maxUses !== null && (await tx.$count(orders, claimed)) >= promo.maxUses) throw new StockError("That code is not valid.");
   if (!promo.oncePerCustomer) return;
@@ -44,12 +52,53 @@ async function releaseAbandonedOrders(ownerKey: string) {
   }
 }
 
+const openWhatsAppOrders = ({ ownerKey, email }: CheckoutInput) =>
+  db.$count(
+    orders,
+    and(eq(orders.status, "pending"), eq(orders.paymentMethod, "whatsapp"), or(eq(orders.ownerKey, ownerKey), sql`lower(${orders.email}) = ${email.toLowerCase()}`)),
+  );
+
+async function emptyCart(tx: Transaction, cartId: string) {
+  await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
+  await tx.update(carts).set({ promoCode: null }).where(eq(carts.id, cartId));
+}
+
+async function announceWhatsAppOrder(orderId: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order?.email) return;
+  const [{ email: storeEmail, whatsapp }, { autoCancelDays }] = await Promise.all([contactDetails(), getSettings()]);
+  const reference = orderRef(order.number);
+  const address = order.shippingAddress;
+  await Promise.allSettled([
+    sendMail({
+      to: order.email,
+      subject: `We have your OCCUIN order ${reference}`,
+      text: [
+        `Thank you. We have your order ${reference} and we are holding your items. It is not paid yet. Total ${money(order.totalCents)}.`,
+        whatsapp ? "Next step: open your order and send it to us on WhatsApp. We will reply with how to pay." : `Next step: write to ${storeEmail} with your reference and we will arrange payment.`,
+        autoCancelDays ? `We cancel unpaid orders after ${autoCancelDays} ${autoCancelDays === 1 ? "day" : "days"}.` : "",
+        "",
+        `Your order: ${privateOrderLink(order.id)}`,
+      ].join("\n"),
+    }),
+    sendMail({
+      to: storeEmail,
+      subject: `New WhatsApp order ${reference}`,
+      text: [`${address?.name ?? order.email}, ${address?.phone ?? "no phone"}, ${order.email}`, `Total ${money(order.totalCents)}. Not paid yet.`, `${process.env.APP_URL ?? "http://localhost:3000"}/admin/orders/${order.id}`].join("\n"),
+    }),
+  ]);
+}
+
 export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> {
-  if (!stripe && !demoPaymentsAllowed()) return { error: "Card payments are not available right now." };
+  const whatsapp = input.payment === "whatsapp";
+  if (!whatsapp && !stripe && !demoPaymentsAllowed()) return { error: "Card payments are not available right now." };
+  await expireUnpaidOrders();
   await releaseAbandonedOrders(input.ownerKey);
   const view = await getCart(input.ownerKey);
   if (!view.lines.length) return { error: "Your bag is empty." };
   if (view.promoError) return { error: view.promoError };
+  if (whatsapp && (await openWhatsAppOrders(input)) >= MAX_OPEN_WHATSAPP_ORDERS) return { error: "You already have unpaid orders waiting. Finish those with us before placing another." };
+  const [pricing, delivery] = await Promise.all([getPricing(), getDelivery()]);
 
   let orderId: string;
   let number: number;
@@ -77,6 +126,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
           totalCents: 0,
           shippingMethod: input.method,
           shippingAddress: input.address,
+          makingDays: delivery.makingMaxDays,
+          paymentMethod: input.payment ?? "stripe",
         })
         .returning();
 
@@ -87,10 +138,12 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
             .update(variants)
             .set({ stock: sql`${variants.stock} - ${item.quantity}` })
             .where(and(eq(variants.id, variant.id), sql`${variants.stock} >= ${item.quantity}`))
-            .returning({ id: variants.id });
+            .returning({ id: variants.id, stock: variants.stock });
           if (!taken.length) throw new StockError(`${product.name} in ${variant.size} just sold out.`);
+          await tx.insert(stockMovements).values({ variantId: variant.id, delta: -item.quantity, stockAfter: taken[0]!.stock, reason: `Order ${orderRef(order!.number)}` });
           priced.push({ amountCents: variant.priceCents * item.quantity, bespoke: null });
-          await tx.insert(orderItems).values({
+          const snapshot = productSnapshotOf(product, variant);
+          const [line] = await tx.insert(orderItems).values({
             orderId: order!.id,
             variantId: variant.id,
             name: product.name,
@@ -98,10 +151,12 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
             image: product.images[0],
             unitPriceCents: variant.priceCents,
             quantity: item.quantity,
-          });
+            productSnapshot: snapshot,
+          }).returning({ id: orderItems.id });
+          await freezeMediaPhotos(tx, line!.id, snapshot.images);
         } else if (design) {
           const spec = designSpecSchema.parse(design.spec);
-          const quote = quoteDesign(spec);
+          const quote = quoteDesign(spec, pricing);
           priced.push({ amountCents: quote.totalCents * item.quantity, bespoke: null });
           await tx.insert(orderItems).values({
             orderId: order!.id,
@@ -129,7 +184,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
         const deposit = depositCents(quoted, request.depositPercent);
         const reference = bespokeRef(request.number);
         priced.push({ amountCents: balance ? quoted - deposit : deposit, bespoke: { part: balance ? "balance" : "deposit", depositCents: deposit, balanceCents: quoted - deposit } });
-        await tx.insert(orderItems).values({
+        const [line] = await tx.insert(orderItems).values({
           orderId: order!.id,
           bespokeRequestId: request.id,
           bespokePart: balance ? "balance" : "deposit",
@@ -138,7 +193,9 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
           image: `/api/bespoke/preview/${request.id}`,
           unitPriceCents: balance ? quoted - deposit : deposit,
           quantity: 1,
-        });
+          bespokeSnapshot: balance ? null : bespokeSnapshotOf(request, reference),
+        }).returning({ id: orderItems.id });
+        if (!balance) await freezeBespokeFiles(tx, line!.id, request.id, request.design);
         await tx.update(bespokeRequests).set({ ...(balance ? { balanceOrderId: order!.id } : { orderId: order!.id }), updatedAt: new Date() }).where(eq(bespokeRequests.id, request.id));
       }
       const goodsCents = discountableCents(priced);
@@ -147,13 +204,14 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       const promo = found?.promo ?? null;
       if (promo) await reservePromo(tx, promo, input);
       const totals = cartTotals(priced, promo?.percentOff ?? 0);
-      const shipping = totals.shippingWaived ? 0 : shippingCents(totals.shippingBasisCents, input.method);
+      const shipping = totals.shippingWaived ? 0 : shippingCents(totals.shippingBasisCents, input.method, input.rates);
       const total = totals.subtotalCents - totals.discountCents + shipping;
       await tx
         .update(orders)
         .set({ subtotalCents: totals.subtotalCents, discountCents: totals.discountCents, shippingCents: shipping, totalCents: total, promoCode: promo?.code ?? null })
         .where(eq(orders.id, order!.id));
       await tx.insert(orderEvents).values({ orderId: order!.id, status: "pending" });
+      if (whatsapp) await emptyCart(tx, cart!.id);
       return { orderId: order!.id, number: order!.number, totalCents: total };
     }));
   } catch (error) {
@@ -161,6 +219,10 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     throw error;
   }
 
+  if (whatsapp) {
+    await announceWhatsAppOrder(orderId).catch((error) => console.error(`[checkout] order ${orderRef(number)} emails failed`, error));
+    return { orderId, redirectUrl: `/orders/${orderId}?placed=1` };
+  }
   if (!stripe) {
     await markPaid(orderId, null);
     return { orderId, redirectUrl: `/orders/${orderId}?placed=1` };
@@ -188,7 +250,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   return { orderId, redirectUrl: session.url! };
 }
 
-export async function markPaid(orderId: string, paymentIntentId: string | null) {
+export async function markPaid(orderId: string, paymentIntentId: string | null, note?: string) {
   const order = await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(orders)
@@ -196,42 +258,49 @@ export async function markPaid(orderId: string, paymentIntentId: string | null) 
       .where(and(eq(orders.id, orderId), eq(orders.status, "pending")))
       .returning();
     if (!updated) return null;
-    await tx.insert(orderEvents).values({ orderId, status: "paid" });
+    await tx.insert(orderEvents).values({ orderId, status: "paid", note });
     await tx
       .update(bespokeRequests)
       .set({ status: "in_production", depositPaidAt: new Date(), updatedAt: new Date() })
       .where(and(eq(bespokeRequests.orderId, orderId), eq(bespokeRequests.status, "accepted")));
     await tx.update(bespokeRequests).set({ balancePaidAt: new Date(), updatedAt: new Date() }).where(eq(bespokeRequests.balanceOrderId, orderId));
-    const [cart] = await tx.select().from(carts).where(eq(carts.ownerKey, updated.ownerKey));
-    if (cart) {
-      await tx.delete(cartItems).where(eq(cartItems.cartId, cart.id));
-      await tx.update(carts).set({ promoCode: null }).where(eq(carts.id, cart.id));
-    }
+    const [cart] = updated.paymentMethod === "whatsapp" ? [] : await tx.select().from(carts).where(eq(carts.ownerKey, updated.ownerKey));
+    if (cart) await emptyCart(tx, cart.id);
     if (updated.promoCode) {
       await tx.update(promoCodes).set({ timesUsed: sql`${promoCodes.timesUsed} + 1` }).where(eq(promoCodes.code, updated.promoCode));
     }
     return updated;
   });
   if (!order) return false;
-  if (order.email) {
-    const owed = await bespokeOnOrder(orderId);
-    const bespokeOrder = owed.length > 0;
-    const balanceNote = owed.flatMap((request) => (balanceOwedCents(request) ? [`A balance of ${money(balanceOwedCents(request))} on ${bespokeRef(request.number)} is due before it ships. We will email you a private link when it is time to pay.\n`] : [])).join("");
-    await sendMail({
-      to: order.email,
-      subject: `Your OCCUIN order ${orderRef(order.number)} is confirmed`,
-      text: `Thank you for your order. Total ${money(order.totalCents)}.\nYour order reference is ${orderRef(order.number)}.
-${balanceNote}${bespokeOrder ? BESPOKE_NOTE : `${MAKING_NOTE} ${deliveryEstimate(order.shippingMethod as ShippingMethod)}.`}
-Follow it at ${process.env.APP_URL ?? ""}/track using this reference and your email.`,
-    });
-  }
+  if (order.email) await sendConfirmation(order).catch((error) => console.error(`[orders] confirmation for ${orderRef(order.number)} failed`, error));
   return true;
+}
+
+async function sendConfirmation(order: typeof orders.$inferSelect) {
+  const [owed, delivery] = await Promise.all([bespokeOnOrder(order.id), getDelivery()]);
+  const bespokeOrder = owed.length > 0;
+  const balanceNote = owed.flatMap((request) => (balanceOwedCents(request) ? [`A balance of ${money(balanceOwedCents(request))} on ${bespokeRef(request.number)} is due before it ships. We will email you a private link when it is time to pay.\n`] : [])).join("");
+  return sendMail({
+    to: order.email!,
+    subject: `Your OCCUIN order ${orderRef(order.number)} is confirmed`,
+    text: `Thank you for your order. Total ${money(order.totalCents)}.\nYour order reference is ${orderRef(order.number)}.
+${balanceNote}${bespokeOrder ? bespokeNote(delivery) : `${makingNote(delivery)} ${deliveryEstimate(order.shippingMethod as ShippingMethod, delivery)}.`}
+Follow it at ${process.env.APP_URL ?? ""}/track using this reference and your email.`,
+  });
+}
+
+export async function resendConfirmation(orderId: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) return { error: "Order not found." };
+  if (!order.email) return { error: "This order has no email address." };
+  if (order.status === "pending" || order.status === "cancelled" || order.status === "refunded") return { error: "Only a paid, open order has a confirmation to resend." };
+  return (await sendConfirmation(order)) ? { ok: true, email: order.email } : { error: "The email could not be sent." };
 }
 
 async function flagPayment(order: typeof orders.$inferSelect, note: string) {
   console.error(`[stripe] ${orderRef(order.number)}: ${note}`);
   await db.insert(orderEvents).values({ orderId: order.id, status: order.status, note });
-  await sendMail({ to: BRAND.email, subject: `Payment problem on ${orderRef(order.number)}`, text: note }).catch(() => false);
+  await sendMail({ to: (await contactDetails()).email, subject: `Payment problem on ${orderRef(order.number)}`, text: note }).catch(() => false);
 }
 
 async function refundLatePayment(order: typeof orders.$inferSelect, paymentIntentId: string | null) {
@@ -258,6 +327,7 @@ export async function settleCheckoutSession(session: Stripe.Checkout.Session) {
   if (await markPaid(order.id, paymentIntentId)) return;
   const [latest] = await db.select().from(orders).where(eq(orders.id, order.id));
   if (latest?.status === "cancelled") await refundLatePayment(latest, paymentIntentId);
+  else if (latest && paymentIntentId) await db.update(orders).set({ stripePaymentIntentId: paymentIntentId }).where(and(eq(orders.id, latest.id), isNull(orders.stripePaymentIntentId)));
 }
 
 export async function cancelCheckoutSession(session: Stripe.Checkout.Session, note: string) {
@@ -281,55 +351,100 @@ async function moveLinkedOrder(tx: Transaction, orderId: string, to: OrderStatus
   }
 }
 
-async function releaseStock(tx: Transaction, orderId: string) {
+async function releaseStock(tx: Transaction, orderId: string, reason: string) {
   const items = await tx
     .select({ variantId: orderItems.variantId, quantity: orderItems.quantity })
     .from(orderItems)
     .where(and(eq(orderItems.orderId, orderId), isNotNull(orderItems.variantId)));
   for (const item of items) {
-    await tx.update(variants).set({ stock: sql`${variants.stock} + ${item.quantity}` }).where(eq(variants.id, item.variantId!));
+    const [released] = await tx.update(variants).set({ stock: sql`${variants.stock} + ${item.quantity}` }).where(eq(variants.id, item.variantId!)).returning({ stock: variants.stock });
+    if (released) await tx.insert(stockMovements).values({ variantId: item.variantId!, delta: item.quantity, stockAfter: released.stock, reason });
   }
 }
 
-export async function moveOrder(orderId: string, to: OrderStatus, details: { note?: string; trackingNumber?: string; overrideBalance?: boolean } = {}) {
-  if (to === "paid") {
-    await markPaid(orderId, null);
-    return { ok: true };
+async function refundedSoFar(tx: Transaction, orderId: string) {
+  const [row] = await tx
+    .select({ cents: sql<number>`coalesce(sum(${orderRefunds.amountCents}), 0)`.mapWith(Number) })
+    .from(orderRefunds)
+    .where(eq(orderRefunds.orderId, orderId));
+  return row?.cents ?? 0;
+}
+
+type RefundDetails = { amountCents: number; reason: string; actorEmail: string; manual?: boolean };
+
+async function issueRefund(tx: Transaction, order: typeof orders.$inferSelect, refundedCents: number, details: RefundDetails): Promise<{ error: string } | { amountCents: number; stripeRefundId: string | null }> {
+  const { amountCents, reason, actorEmail, manual } = details;
+  const paymentIntent = order.stripePaymentIntentId;
+  if (paymentIntent && !stripe) return { error: "Stripe is not configured on this server, so this payment cannot be refunded here. Nothing was changed." };
+  if (!paymentIntent && !manual) return { error: "This order has no Stripe payment to refund. Nothing was changed. If the money was returned another way, record it as a manual refund." };
+  let stripeRefundId: string | null = null;
+  if (paymentIntent && stripe) {
+    try {
+      const refund = await stripe.refunds.create(
+        { payment_intent: paymentIntent, amount: amountCents, metadata: { orderId: order.id, reference: orderRef(order.number) } },
+        { idempotencyKey: `refund-${order.id}-${refundedCents}-${amountCents}` },
+      );
+      if (refund.status === "failed" || refund.status === "canceled") return { error: `Stripe reported the refund as ${refund.status}, so nothing was changed.` };
+      stripeRefundId = refund.id;
+    } catch (error) {
+      console.error(`[stripe] refund on ${orderRef(order.number)} failed`, error);
+      const detail = error instanceof Stripe.errors.StripeError ? ` ${error.message}` : "";
+      return { error: `Stripe refused the refund, so nothing was changed.${detail}` };
+    }
   }
+  await tx.insert(orderRefunds).values({ orderId: order.id, amountCents, reason, stripeRefundId, actorEmail });
+  return { amountCents, stripeRefundId };
+}
+
+type MoveDetails = { note?: string; trackingNumber?: string; overrideBalance?: boolean; actorEmail?: string; manualRefund?: boolean };
+
+async function applyMove(tx: Transaction, order: typeof orders.$inferSelect, to: OrderStatus, details: MoveDetails): Promise<{ error: string } | { order: typeof orders.$inferSelect }> {
+  const orderId = order.id;
+  if (!canTransition(order.status, to)) return { error: `An order cannot move from ${order.status} to ${to}.` };
+  const owing = to === "shipped" ? (await bespokeOnOrder(orderId, tx)).filter((request) => balanceOwedCents(request) > 0) : [];
+  const owed = owing.map((request) => `${money(balanceOwedCents(request))} on ${bespokeRef(request.number)}`).join(", ");
+  if (owing.length && !details.overrideBalance) return { error: `A balance of ${owed} is due, so this order cannot ship yet.` };
+  if (owing.length && !details.note) return { error: "Add a note saying why this order ships with a balance due." };
+  if (to === "refunded") {
+    const refundedCents = await refundedSoFar(tx, orderId);
+    const remaining = order.totalCents - refundedCents;
+    if (remaining > 0) {
+      const issued = await issueRefund(tx, order, refundedCents, {
+        amountCents: remaining,
+        reason: details.note || "Full refund",
+        actorEmail: details.actorEmail ?? "system",
+        manual: details.manualRefund,
+      });
+      if ("error" in issued) return issued;
+    }
+  }
+  if ((to === "cancelled" || to === "refunded") && stockIsHeld(order.status)) await releaseStock(tx, orderId, `Order ${orderRef(order.number)} ${to}`);
+  await tx
+    .update(orders)
+    .set({ status: to, trackingNumber: details.trackingNumber ?? order.trackingNumber })
+    .where(eq(orders.id, orderId));
+  await tx.insert(orderEvents).values({ orderId, status: to, note: owing.length ? `Shipped with a balance of ${owed} due. ${details.note}` : details.note });
+  if (to === "cancelled") {
+    await tx.update(bespokeRequests).set({ orderId: null, updatedAt: new Date() }).where(and(eq(bespokeRequests.orderId, orderId), eq(bespokeRequests.status, "accepted")));
+    await tx.update(bespokeRequests).set({ balanceOrderId: null, updatedAt: new Date() }).where(eq(bespokeRequests.balanceOrderId, orderId));
+  }
+  if (to === "refunded") {
+    await tx.update(bespokeRequests).set({ balanceRequestedAt: null, updatedAt: new Date() }).where(eq(bespokeRequests.orderId, orderId));
+    await tx.update(bespokeRequests).set({ balanceOrderId: null, balancePaidAt: null, updatedAt: new Date() }).where(eq(bespokeRequests.balanceOrderId, orderId));
+  }
+  if (to === "delivered") {
+    await tx.update(bespokeRequests).set({ status: "completed", updatedAt: new Date() }).where(and(or(eq(bespokeRequests.orderId, orderId), eq(bespokeRequests.balanceOrderId, orderId)), eq(bespokeRequests.status, "in_production")));
+  }
+  if (to === "shipped" || to === "delivered") await moveLinkedOrder(tx, orderId, to, details.trackingNumber);
+  return { order };
+}
+
+export async function moveOrder(orderId: string, to: OrderStatus, details: MoveDetails = {}) {
+  if (to === "paid") return (await markPaid(orderId, null, details.note)) ? { ok: true } : { error: "Only an order awaiting payment can be marked paid." };
   const result = await db.transaction(async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!order) return { error: "Order not found." };
-    if (!canTransition(order.status, to)) return { error: `An order cannot move from ${order.status} to ${to}.` };
-    const owing = to === "shipped" ? (await bespokeOnOrder(orderId, tx)).filter((request) => balanceOwedCents(request) > 0) : [];
-    const owed = owing.map((request) => `${money(balanceOwedCents(request))} on ${bespokeRef(request.number)}`).join(", ");
-    if (owing.length && !details.overrideBalance) return { error: `A balance of ${owed} is due, so this order cannot ship yet.` };
-    if (owing.length && !details.note) return { error: "Add a note saying why this order ships with a balance due." };
-    if (to === "refunded" && order.stripePaymentIntentId && stripe) {
-      try {
-        await stripe.refunds.create({ payment_intent: order.stripePaymentIntentId }, { idempotencyKey: `refund-${orderId}` });
-      } catch {
-        return { error: "Stripe refused the refund, so the order was not changed." };
-      }
-    }
-    if ((to === "cancelled" || to === "refunded") && stockIsHeld(order.status)) await releaseStock(tx, orderId);
-    await tx
-      .update(orders)
-      .set({ status: to, trackingNumber: details.trackingNumber ?? order.trackingNumber })
-      .where(eq(orders.id, orderId));
-    await tx.insert(orderEvents).values({ orderId, status: to, note: owing.length ? `Shipped with a balance of ${owed} due. ${details.note}` : details.note });
-    if (to === "cancelled") {
-      await tx.update(bespokeRequests).set({ orderId: null, updatedAt: new Date() }).where(and(eq(bespokeRequests.orderId, orderId), eq(bespokeRequests.status, "accepted")));
-      await tx.update(bespokeRequests).set({ balanceOrderId: null, updatedAt: new Date() }).where(eq(bespokeRequests.balanceOrderId, orderId));
-    }
-    if (to === "refunded") {
-      await tx.update(bespokeRequests).set({ balanceRequestedAt: null, updatedAt: new Date() }).where(eq(bespokeRequests.orderId, orderId));
-      await tx.update(bespokeRequests).set({ balanceOrderId: null, balancePaidAt: null, updatedAt: new Date() }).where(eq(bespokeRequests.balanceOrderId, orderId));
-    }
-    if (to === "delivered") {
-      await tx.update(bespokeRequests).set({ status: "completed", updatedAt: new Date() }).where(and(or(eq(bespokeRequests.orderId, orderId), eq(bespokeRequests.balanceOrderId, orderId)), eq(bespokeRequests.status, "in_production")));
-    }
-    if (to === "shipped" || to === "delivered") await moveLinkedOrder(tx, orderId, to, details.trackingNumber);
-    return { order };
+    return applyMove(tx, order, to, details);
   });
   if ("error" in result) return result;
   const { order } = result;
@@ -341,6 +456,100 @@ export async function moveOrder(orderId: string, to: OrderStatus, details: { not
     });
   }
   return { ok: true };
+}
+
+async function expireWhatsAppOrder(order: { id: string; number: number; email: string | null }, days: number) {
+  const moved = await moveOrder(order.id, "cancelled", { note: `Cancelled automatically: not paid within ${days} ${days === 1 ? "day" : "days"}.`, actorEmail: "system" });
+  if ("error" in moved || !order.email) return;
+  await sendMail({
+    to: order.email,
+    subject: `Your OCCUIN order ${orderRef(order.number)} was cancelled`,
+    text: `We did not receive payment for order ${orderRef(order.number)} within ${days} ${days === 1 ? "day" : "days"}, so we have cancelled it and released your items. You have not been charged. You are welcome to order again.`,
+  }).catch(() => false);
+}
+
+export async function expireUnpaidOrders() {
+  try {
+    const { autoCancelDays } = await getSettings();
+    if (!autoCancelDays) return;
+    const overdue = await db
+      .select({ id: orders.id, number: orders.number, email: orders.email })
+      .from(orders)
+      .where(and(eq(orders.status, "pending"), eq(orders.paymentMethod, "whatsapp"), lt(orders.createdAt, new Date(Date.now() - autoCancelDays * DAY_MS))))
+      .orderBy(orders.createdAt)
+      .limit(AUTO_CANCEL_BATCH);
+    for (const order of overdue) await expireWhatsAppOrder(order, autoCancelDays);
+  } catch (error) {
+    console.error("[orders] auto cancel failed", error);
+  }
+}
+
+export type RefundInput = {
+  amountCents: number | "remaining";
+  reason: string;
+  actorEmail: string;
+  manual?: boolean;
+  expectedRefundedCents?: number;
+};
+
+export type RefundResult = { error: string } | { amountCents: number; full: boolean; stripeBacked: boolean };
+
+export async function refundOrder(orderId: string, input: RefundInput): Promise<RefundResult> {
+  const { reason, actorEmail, manual, expectedRefundedCents } = input;
+  return db.transaction(async (tx) => {
+    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    if (!order) return { error: "Order not found." };
+    if (!canTransition(order.status, "refunded")) return { error: "Only a paid order can be refunded." };
+    const refundedCents = await refundedSoFar(tx, orderId);
+    if (expectedRefundedCents !== undefined && expectedRefundedCents !== refundedCents) {
+      return { error: "Another refund was recorded while this page was open. Reload and check the amount. Nothing was changed." };
+    }
+    const remaining = order.totalCents - refundedCents;
+    const amountCents = input.amountCents === "remaining" ? remaining : input.amountCents;
+    if (!Number.isInteger(amountCents) || amountCents <= 0) return { error: "Enter an amount above zero." };
+    if (amountCents > remaining) return { error: `Only ${money(remaining)} is left to refund on this order.` };
+    const stripeBacked = Boolean(order.stripePaymentIntentId);
+    if (amountCents === remaining) {
+      const moved = await applyMove(tx, order, "refunded", { note: reason, actorEmail, manualRefund: manual });
+      if ("error" in moved) return moved;
+      return { amountCents, full: true, stripeBacked };
+    }
+    const issued = await issueRefund(tx, order, refundedCents, { amountCents, reason, actorEmail, manual });
+    if ("error" in issued) return issued;
+    return { amountCents, full: false, stripeBacked };
+  });
+}
+
+export async function emailRefund(order: { email: string | null; number: number; paymentMethod: PaymentMode }, amountCents: number) {
+  if (!order.email) return false;
+  const timing = order.paymentMethod === "whatsapp" ? "" : " It can take 5 to 10 business days to appear on your statement.";
+  return sendMail({
+    to: order.email,
+    subject: `Your OCCUIN order ${orderRef(order.number)} was refunded`,
+    text: `We have refunded ${money(amountCents)} on order ${orderRef(order.number)}.${timing} Reply to this email if you have a question.`,
+  }).catch(() => false);
+}
+
+export async function syncStripeRefund(charge: Stripe.Charge) {
+  const paymentIntent = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+  if (!paymentIntent) return;
+  const synced = await db.transaction(async (tx) => {
+    const [order] = await tx.select().from(orders).where(eq(orders.stripePaymentIntentId, paymentIntent)).for("update");
+    if (!order) return null;
+    const recorded = await refundedSoFar(tx, order.id);
+    const missing = charge.amount_refunded - recorded;
+    if (missing <= 0) return null;
+    const note = `Refund of ${money(missing)} made in the Stripe dashboard.`;
+    await tx.insert(orderRefunds).values({ orderId: order.id, amountCents: missing, reason: note, actorEmail: "Stripe" });
+    if (recorded + missing >= order.totalCents && canTransition(order.status, "refunded")) {
+      const moved = await applyMove(tx, order, "refunded", { note, actorEmail: "Stripe" });
+      if ("error" in moved) throw new Error(moved.error);
+    } else {
+      await tx.insert(orderEvents).values({ orderId: order.id, status: order.status, note });
+    }
+    return { order, missing };
+  });
+  if (synced) await emailRefund(synced.order, synced.missing);
 }
 
 export async function getOrder(orderId: string) {

@@ -5,6 +5,7 @@ import { cartTotals, discountableCents, type PricedLine } from "../cart-totals";
 import { money } from "../format";
 import { designSpecSchema } from "../studio/spec";
 import { quoteDesign } from "../studio/pricing";
+import { getPricing } from "./content";
 import { db, schema } from "./db";
 
 const { bespokeRequests, cartItems, carts, designs, products, promoCodes, variants } = schema;
@@ -71,6 +72,7 @@ export async function getCart(ownerKey: string | null): Promise<CartView> {
     .where(eq(cartItems.cartId, cart.id))
     .orderBy(cartItems.id);
 
+  const pricing = rows.some((row) => row.design) ? await getPricing() : undefined;
   const lines = rows.flatMap(({ item, variant, product, design, bespoke }): CartLine[] => {
     if (bespoke) {
       const quoted = bespoke.quotedPriceCents ?? 0;
@@ -106,7 +108,7 @@ export async function getCart(ownerKey: string | null): Promise<CartView> {
     if (!design) return [];
     const spec = designSpecSchema.safeParse(design.spec);
     if (!spec.success) return [];
-    const { totalCents } = quoteDesign(spec.data);
+    const { totalCents } = quoteDesign(spec.data, pricing);
     return [{
       id: item.id,
       kind: "design",
@@ -193,6 +195,7 @@ export async function addBespoke(ownerKey: string, requestId: string, part: "dep
 export async function setQuantity(ownerKey: string, itemId: string, quantity: number) {
   const [cart] = await db.select().from(carts).where(eq(carts.ownerKey, ownerKey));
   if (!cart) return;
+  await db.update(carts).set({ updatedAt: new Date() }).where(eq(carts.id, cart.id));
   const scope = and(eq(cartItems.id, itemId), eq(cartItems.cartId, cart.id));
   if (quantity < 1) {
     await db.delete(cartItems).where(scope);

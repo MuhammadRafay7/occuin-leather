@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { db, schema } from "./db";
 
-const { bespokeDesigns, bespokeLogos, bespokeMessages, bespokeRequestImages, bespokeRequests, bespokeTokens, carts, contactMessages, designs, newsletterSubscribers, orders, users, wishlistItems } = schema;
+const { bespokeDesigns, bespokeLogos, bespokeMessages, bespokeRequestImages, bespokeRequests, bespokeTokens, carts, contactMessages, designs, manufacturerLinks, newsletterSubscribers, orderItemFiles, orderItems, orders, users, wishlistItems } = schema;
 
 
 export async function eraseAccount(user: { id: string; email: string }) {
@@ -13,6 +13,15 @@ export async function eraseAccount(user: { id: string; email: string }) {
     const openBespoke = await tx.$count(bespokeRequests, and(mine, inArray(bespokeRequests.status, ["accepted", "in_production"])));
     if (openOrders || openBespoke) return false;
 
+    const closedOrders = (await tx.select({ id: orders.id }).from(orders).where(eq(orders.ownerKey, owner))).map((order) => order.id);
+    if (closedOrders.length) {
+      await tx.update(manufacturerLinks).set({ revokedAt: new Date() }).where(and(inArray(manufacturerLinks.orderId, closedOrders), isNull(manufacturerLinks.revokedAt)));
+      const lines = await tx.select({ id: orderItems.id, snapshot: orderItems.bespokeSnapshot }).from(orderItems).where(inArray(orderItems.orderId, closedOrders));
+      await tx.delete(orderItemFiles).where(and(inArray(orderItemFiles.orderItemId, lines.map((line) => line.id)), inArray(orderItemFiles.kind, ["reference", "logo"])));
+      for (const line of lines) {
+        if (line.snapshot) await tx.update(orderItems).set({ bespokeSnapshot: { ...line.snapshot, notes: "" } }).where(eq(orderItems.id, line.id));
+      }
+    }
     await tx.update(orders).set({ ownerKey: `deleted:${randomUUID()}` }).where(eq(orders.ownerKey, owner));
 
     const kept = await tx

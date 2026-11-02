@@ -1,10 +1,11 @@
+import type { PaymentMode } from "@/lib/server/settings";
 import Link from "next/link";
 import type { BespokeDesign } from "@/lib/bespoke/design";
 import { designSchema, PRODUCT_TYPES, type ProductType } from "@/lib/bespoke/design";
 import { hardwareList } from "@/lib/bespoke/estimate";
 import { boundsOf, layerOrder, outlineOf, pieceBounds } from "@/lib/bespoke/outline";
 import { balanceBuyable, balanceCents, balanceOwedCents, BESPOKE_STATUS_LABELS, bespokeBuyable, bespokeRef, depositCents, quoteAcceptable, quoteExpired, QUOTE_DAYS, type BespokeStatus } from "@/lib/bespoke/status";
-import { BESPOKE_NOTE, longDate, money } from "@/lib/format";
+import { bespokeNote, longDate, money, type Delivery } from "@/lib/format";
 import { COLORS, FINISHES, METALS, THREADS } from "@/lib/studio/spec";
 import { Conversation, type ThreadMessage } from "./ask-team";
 import { DesignStage } from "./design-stage";
@@ -20,6 +21,7 @@ type Request = {
   design: BespokeDesign;
   quotedPriceCents: number | null;
   quoteExpiresAt: Date | null;
+  quotedAt: Date | null;
   orderId: string | null;
   changeMessage: string | null;
   depositPercent: number;
@@ -27,6 +29,9 @@ type Request = {
   balanceRequestedAt: Date | null;
   balancePaidAt: Date | null;
 };
+
+const quoteWindow = ({ quotedAt, quoteExpiresAt }: Pick<Request, "quotedAt" | "quoteExpiresAt">) =>
+  quotedAt && quoteExpiresAt ? Math.round((quoteExpiresAt.getTime() - quotedAt.getTime()) / 86_400_000) : QUOTE_DAYS;
 
 const STATUS_NOTES: Partial<Record<BespokeStatus, string>> = {
   question: "Your question is with our team. We will reply here and by email.",
@@ -80,7 +85,7 @@ function Payment({ request, quoted }: { request: Request; quoted: number }) {
   );
 }
 
-export function RequestView({ request, access, canSeeOrder, messages, whatsapp, shareUrl }: { request: Request; access: { token?: string; id?: string }; canSeeOrder: boolean; messages: ThreadMessage[]; whatsapp: string | null; shareUrl: string }) {
+export function RequestView({ request, access, canSeeOrder, messages, whatsapp, shareUrl, delivery, payment, unpaidOrder }: { request: Request; access: { token?: string; id?: string }; canSeeOrder: boolean; messages: ThreadMessage[]; whatsapp: string | null; shareUrl: string; payment: PaymentMode; unpaidOrder: string | null; delivery: Delivery }) {
   const parsed = designSchema.safeParse(request.design);
   const design = parsed.success ? parsed.data : null;
   const expired = quoteExpired(request.quoteExpiresAt);
@@ -90,7 +95,8 @@ export function RequestView({ request, access, canSeeOrder, messages, whatsapp, 
   const quoted = request.quotedPriceCents;
   const owed = balanceOwedCents(request);
   const deposit = quoted ? depositCents(quoted, request.depositPercent) : 0;
-  const payLabel = quoted && deposit === quoted ? `pay ${money(quoted)}` : `pay ${money(deposit)} deposit`;
+  const payVerb = payment === "whatsapp" ? "arrange" : "pay";
+  const payLabel = quoted && deposit === quoted ? `${payVerb} ${money(quoted)}` : `${payVerb} ${money(deposit)} deposit`;
   const paidNote = owed ? (request.balanceRequestedAt ? `Your piece is ready for its final payment of ${money(owed)}.` : "Your deposit is paid and your piece is being made.") : null;
   const shareText = quoted ? `My OCCUIN design ${reference}, quoted at ${money(quoted)}: ${shareUrl}` : `My OCCUIN design ${reference}: ${shareUrl}`;
   const quotedAndOpen = request.status === "quoted";
@@ -114,16 +120,17 @@ export function RequestView({ request, access, canSeeOrder, messages, whatsapp, 
             <div>
               <p className="text-sm text-muted">Final price</p>
               <p className="font-display text-5xl leading-tight tabular-nums" data-testid="price">{money(request.quotedPriceCents)}</p>
-              {request.quoteExpiresAt && quotedAndOpen && !expired ? <p className="mt-1 text-sm text-muted">This quote is open for {QUOTE_DAYS} days, until {longDate(request.quoteExpiresAt)}.</p> : null}
+              {request.quoteExpiresAt && quotedAndOpen && !expired ? <p className="mt-1 text-sm text-muted">This quote is open for {quoteWindow(request)} days, until {longDate(request.quoteExpiresAt)}.</p> : null}
               {quoted ? <Payment request={request} quoted={quoted} /> : null}
             </div>
           ) : null}
           {note ? <p role="status" className="text-sm">{note}</p> : null}
-          <QuoteActions access={access} canAccept={acceptable} canChange={quotedAndOpen} canBag={buyable} canPayBalance={balanceBuyable(request)} payLabel={payLabel} balanceLabel={`Pay balance of ${money(owed)}`} />
+          <QuoteActions access={access} canAccept={acceptable} canChange={quotedAndOpen} canBag={buyable && !unpaidOrder} canPayBalance={balanceBuyable(request) && !unpaidOrder} payLabel={payLabel} balanceLabel={payment === "whatsapp" ? `Arrange balance of ${money(owed)}` : `Pay balance of ${money(owed)}`} />
+          {unpaidOrder ? <p role="status" className="text-sm">Your order for this is waiting for payment. <Link href={unpaidOrder} className="underline underline-offset-4">See your next step</Link></p> : null}
           <ChatOnWhatsApp number={whatsapp} text={`Hello OCCUIN, I have a question about my design ${reference}.`} />
           <ShareOnWhatsApp number={whatsapp} text={shareText} label={quoted ? "Share this quote on WhatsApp" : "Share this design on WhatsApp"} />
           {request.orderId && canSeeOrder ? <Link href={`/orders/${request.orderId}`} className="text-sm underline underline-offset-4">View your order</Link> : null}
-          <p className="text-sm text-muted">{BESPOKE_NOTE}</p>
+          <p className="text-sm text-muted">{bespokeNote(delivery)}</p>
         </aside>
       </div>
     </div>

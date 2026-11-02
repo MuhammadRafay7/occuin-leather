@@ -4,6 +4,7 @@ import { z } from "zod";
 import { hitRateLimit } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/client-ip";
 import { db, schema } from "@/lib/server/db";
+import { removeSubscriber, verifyUnsubscribe } from "@/lib/server/unsubscribe";
 
 export type NewsletterState = { ok?: boolean; error?: string };
 
@@ -16,5 +17,13 @@ export async function subscribe(_: NewsletterState, form: FormData): Promise<New
     return { error: "Too many attempts. Try again in an hour." };
   }
   await db.insert(schema.newsletterSubscribers).values({ email: parsed.data }).onConflictDoNothing();
+  return { ok: true };
+}
+
+export async function unsubscribe(_: NewsletterState, form: FormData): Promise<NewsletterState> {
+  const address = String(form.get("email") ?? "");
+  if (!address || !verifyUnsubscribe(address, String(form.get("token") ?? ""))) return { error: "This link is not valid." };
+  if (await hitRateLimit(`unsubscribe:${await clientIp()}`, 30, 3600)) return { error: "Too many attempts. Try again in an hour." };
+  await removeSubscriber(address);
   return { ok: true };
 }

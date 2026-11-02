@@ -305,6 +305,11 @@ export function patternSheets(pattern: Pattern): Sheet[] {
 
 export function sheetsToPdf(sheets: Sheet[]) {
   const pdf = new PdfDocument();
+  drawSheets(pdf, sheets);
+  return pdf.render();
+}
+
+export function drawSheets(pdf: PdfDocument, sheets: Sheet[]) {
   for (const sheet of sheets) {
     const page = pdf.addPage(PAGE_W, PAGE_H);
     for (const op of sheet.ops) {
@@ -318,7 +323,6 @@ export function sheetsToPdf(sheets: Sheet[]) {
       page.shape([subpath], { stroke: op.stroke, width: op.width, ...(op.dash ? { dash: op.dash } : {}) });
     }
   }
-  return pdf.render();
 }
 
 const escapeXml = (value: string) => value.replace(/[<>&'"]/g, (char) => `&#${char.charCodeAt(0)};`);

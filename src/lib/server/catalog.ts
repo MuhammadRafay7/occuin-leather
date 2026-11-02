@@ -1,5 +1,5 @@
 import { publicName } from "../format";
-import { and, asc, avg, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { db, schema } from "./db";
 
@@ -113,7 +113,8 @@ export const getProduct = cache(async (slug: string) => {
     .where(and(eq(products.slug, slug), eq(products.active, true)));
   if (!row) return null;
   const options = await db.select().from(variants).where(eq(variants.productId, row.product.id)).orderBy(asc(variants.sku));
-  return { ...row.product, categoryName: row.categoryName, department: row.department as Department, variants: options };
+  const department = row.department === "leather" || row.product.audiences.includes(row.department) ? row.department : "leather";
+  return { ...row.product, categoryName: row.categoryName, department: department as Department, variants: options };
 });
 
 export async function listRelated(productId: string, category: string, limit = 4) {
@@ -122,15 +123,16 @@ export async function listRelated(productId: string, category: string, limit = 4
 }
 
 export async function getReviews(productId: string) {
+  const visible = and(eq(reviews.productId, productId), isNull(reviews.hiddenAt));
   const [summary] = await db
     .select({ average: avg(reviews.rating), total: count() })
     .from(reviews)
-    .where(eq(reviews.productId, productId));
+    .where(visible);
   const items = await db
-    .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, createdAt: reviews.createdAt, author: users.name })
+    .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, reply: reviews.reply, repliedAt: reviews.repliedAt, createdAt: reviews.createdAt, author: users.name })
     .from(reviews)
     .innerJoin(users, eq(users.id, reviews.userId))
-    .where(eq(reviews.productId, productId))
+    .where(visible)
     .orderBy(desc(reviews.createdAt));
   return { average: summary?.average ? Number(summary.average) : 0, total: summary?.total ?? 0, items: items.map((item) => ({ ...item, author: publicName(item.author) })) };
 }

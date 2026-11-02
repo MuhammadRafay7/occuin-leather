@@ -1,9 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
-import { cookies } from "next/headers";
+import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { ADMIN_PATH_HEADER, adminLoginPath } from "@/lib/safe-next";
 import { db, schema } from "./db";
 
 const SESSION_COOKIE = "orsel_session";
@@ -45,7 +46,7 @@ export const getUser = cache(async () => {
     .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.users.role })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
-    .where(and(eq(schema.sessions.tokenHash, tokenHash(token)), gt(schema.sessions.expiresAt, new Date())));
+    .where(and(eq(schema.sessions.tokenHash, tokenHash(token)), gt(schema.sessions.expiresAt, new Date()), isNull(schema.users.blockedAt)));
   return row ?? null;
 });
 
@@ -56,7 +57,8 @@ export async function requireUser(next = "/account") {
 }
 
 export async function requireAdmin() {
-  const user = await requireUser("/admin");
+  const user = await getUser();
+  if (!user) redirect(adminLoginPath((await headers()).get(ADMIN_PATH_HEADER)));
   if (user.role !== "admin") redirect("/");
   return user;
 }

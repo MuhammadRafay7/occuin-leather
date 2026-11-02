@@ -1,5 +1,6 @@
 import { COLORS, FINISHES, METALS, THREADS } from "../studio/spec";
 import { HARDWARE, PRODUCT_TYPES, TEXT_TECHNIQUES, VIEWS, type BespokeDesign, type BespokePiece } from "./design";
+import type { StudioPricing } from "../studio/pricing";
 import { estimateDesign, hardwareList, visibleDesign } from "./estimate";
 import { bodyOf, boundsOf, cubics, fullPoints, groupBounds, holesFor, isSolidPanel, layerOrder, netArea, outlineOf, pathLength, perimeter, piecePath, stitchRuns, type Vec } from "./outline";
 import { PdfDocument, type PdfPage, type PdfSubpath } from "./pdf";
@@ -66,8 +67,8 @@ function pieceFull(design: BespokeDesign, piece: BespokePiece, map: (point: Vec)
 
 const leatherLabel = (piece: BespokePiece) => `${COLORS[piece.color].name} ${FINISHES[piece.finish].name.toLowerCase()}`;
 
-function summary(page: PdfPage, design: BespokeDesign, title: string, reference?: string) {
-  const estimate = estimateDesign(design);
+function summary(page: PdfPage, design: BespokeDesign, pricing: StudioPricing | undefined, title: string, reference?: string) {
+  const estimate = estimateDesign(design, pricing);
   page.text(title, 15, 22, 7, INK, true);
   let y = 32;
   const row = (label: string, value: string) => {
@@ -102,11 +103,11 @@ function fitPlan(page: PdfPage, design: BespokeDesign, top: number) {
   return top + box.height * scale + 8;
 }
 
-export function customerPdf(source: BespokeDesign) {
+export function customerPdf(source: BespokeDesign, pricing?: StudioPricing) {
   const design = visibleDesign(source);
   const pdf = new PdfDocument();
   const page = pdf.addPage(A4.width, A4.height);
-  let y = fitPlan(page, design, summary(page, design, design.name || "Your OCCUIN design"));
+  let y = fitPlan(page, design, summary(page, design, pricing, design.name || "Your OCCUIN design"));
   page.text("Pieces", 15, y, 4, INK, true);
   y += 6;
   for (const piece of layerOrder(design.pieces).filter((item) => !item.holeOf).slice(0, Math.floor((A4.height - y - 15) / 5))) {
@@ -116,11 +117,16 @@ export function customerPdf(source: BespokeDesign) {
   return pdf.render();
 }
 
-export function cutSheetPdf(source: BespokeDesign, reference: string) {
-  const design = visibleDesign(source);
+export function cutSheetPdf(source: BespokeDesign, reference: string, pricing?: StudioPricing) {
   const pdf = new PdfDocument();
+  appendCutSheet(pdf, source, reference, pricing);
+  return pdf.render();
+}
+
+export function appendCutSheet(pdf: PdfDocument, source: BespokeDesign, reference: string, pricing?: StudioPricing) {
+  const design = visibleDesign(source);
   const page = pdf.addPage(A4.width, A4.height);
-  let y = summary(page, design, `Cut sheet ${reference}`, reference);
+  let y = summary(page, design, pricing, `Cut sheet ${reference}`, reference);
   const body = bodyOf(design);
   const cuts: { label: string; quantity: number; detail: string }[] = [];
   for (const piece of layerOrder(design.pieces).filter((item) => !item.holeOf)) {
@@ -199,7 +205,6 @@ export function cutSheetPdf(source: BespokeDesign, reference: string) {
     }
     scaleBar(sheet, MARGIN_MM, sheetHeight - 12);
   }
-  return pdf.render();
 }
 
 function scaleBar(page: PdfPage, x: number, y: number) {

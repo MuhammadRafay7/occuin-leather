@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { money } from "@/lib/format";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { COLORS, FINISHES, METALS, PATTERNS, THREADS, type ColorKey, type DesignSpec, type FinishKey, type Hide } from "@/lib/studio/spec";
+import { useStudioRates } from "./rates";
 import { BagGlyph, ColorGrid, Disclosure, Group, Issue, LeatherSample, SECONDARY, Segments, SideGlyph, Slider, Tile, Tiles, Toggle } from "./controls";
 import { useStudio, type SectionKey } from "./store";
 
@@ -37,14 +38,15 @@ function useEdit() {
 }
 
 function usePriceDelta(spec: Spec) {
+  const { pricing } = useStudioRates();
   return useMemo(() => {
-    const current = quoteDesign(spec).totalCents;
+    const current = quoteDesign(spec, pricing).totalCents;
     return (candidate: Spec) => {
-      const delta = quoteDesign(candidate).totalCents - current;
+      const delta = quoteDesign(candidate, pricing).totalCents - current;
       if (delta === 0) return undefined;
       return `${delta > 0 ? "+" : "\u2212"}${money(Math.abs(delta))}`;
     };
-  }, [spec]);
+  }, [spec, pricing]);
 }
 
 const SIZES = [

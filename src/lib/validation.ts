@@ -42,6 +42,16 @@ export const emailField = z
   .max(254, "Enter a valid email.")
   .pipe(z.email("Enter a valid email."));
 
+export const phoneDigits = (phone: string) => phone.replace(/\D/g, "").replace(/^00/, "");
+
+export const phoneField = z
+  .string("Enter your phone number.")
+  .trim()
+  .min(1, "Enter your phone number.")
+  .max(30, "Enter a valid phone number.")
+  .regex(/^\+?[\d\s()-]+$/, "Enter a valid phone number.")
+  .refine((value) => /^[1-9]\d{6,14}$/.test(phoneDigits(value)), "Include your country code, such as +92 300 1234567.");
+
 export const newPasswordField = z
   .string()
   .min(10, "Use at least 10 characters.")

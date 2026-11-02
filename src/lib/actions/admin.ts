@@ -1,17 +1,19 @@
 "use server";
 
-import { and, asc, eq, notInArray } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { variantToInput, type VariantInput } from "@/app/admin/_lib/format";
 import { BESPOKE_STATUSES, depositProblem, type BespokeStatus } from "@/lib/bespoke/status";
+import { IMAGE_PATH, MAX_PRODUCT_IMAGES, mediaIdsIn } from "@/lib/media";
 import { ORDER_STATUSES, STATUS_LABELS, type OrderStatus } from "@/lib/order-status";
+import { recordAudit } from "@/lib/server/audit";
 import { requireAdmin } from "@/lib/server/auth";
 import { applyAdminUpdate, sendQuoteEmail } from "@/lib/server/bespoke";
 import { db, schema } from "@/lib/server/db";
 import { moveOrder } from "@/lib/server/orders";
 
-const { categories, contactMessages, orders, products, promoCodes, variants } = schema;
+const { categories, contactMessages, mediaImages, orders, products, promoCodes, stockMovements, variants } = schema;
 
 export type ActionResult = { ok: boolean; message: string; fieldErrors?: Record<string, string> };
 export type ProductInput = {
@@ -33,7 +35,6 @@ export type BespokeInput = { id: string; status: BespokeStatus; quotedPrice: str
 export type PromoInput = { code: string; percentOff: string; minSubtotal: string; expiresOn: string; maxUses: string; oncePerCustomer: boolean };
 
 const MAX_STOCK = 1_000_000;
-const IMAGE_PATH = /^\/images\/(?!.*\.\.)[\w./-]+$/;
 const uuid = z.uuid();
 
 const fail = (message: string, fieldErrors?: Record<string, string>): ActionResult => ({ ok: false, message, fieldErrors });
@@ -106,8 +107,9 @@ const productSchema = z
       .transform((value) => value.split(/[\n,]+/).map((path) => path.trim()).filter(Boolean))
       .pipe(
         z
-          .array(z.string().regex(IMAGE_PATH, "Each path must sit under /images, such as /images/gown-scarlet.webp."))
-          .min(1, "Add at least one image path."),
+          .array(z.string().regex(IMAGE_PATH, "Each image must be an uploaded image or a path under /images."))
+          .min(1, "Add at least one image.")
+          .max(MAX_PRODUCT_IMAGES, `Use at most ${MAX_PRODUCT_IMAGES} images.`),
       ),
     audiences: z.array(z.enum(["women", "men"])).min(1, "Choose Women, Men or both."),
     featured: z.boolean(),
@@ -126,6 +128,8 @@ const productSchema = z
     });
   });
 
+class MissingMedia extends Error {}
+
 class VariantConflict extends Error {
   constructor(readonly index: number, message: string) {
     super(message);
@@ -133,6 +137,7 @@ class VariantConflict extends Error {
 }
 
 function describeSaveError(error: unknown, rows: { sku: string }[]): ActionResult | null {
+  if (error instanceof MissingMedia) return fail("Nothing was saved. An image was deleted from the media library.", { images: "Remove the missing image and save again." });
   if (error instanceof VariantConflict) {
     return fail("Nothing was saved. A variant changed while you were editing.", { [`variants.${error.index}.stock`]: error.message });
   }
@@ -149,7 +154,7 @@ function describeSaveError(error: unknown, rows: { sku: string }[]): ActionResul
 }
 
 export async function saveProduct(input: ProductInput): Promise<ProductResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { id, variants: rows, ...fields } = parsed.data;
@@ -160,6 +165,10 @@ export async function saveProduct(input: ProductInput): Promise<ProductResult> {
 
     try {
       const productId = await db.transaction(async (tx) => {
+        const mediaIds = [...new Set(mediaIdsIn(fields.images))];
+        const found = mediaIds.length ? await tx.select({ id: mediaImages.id }).from(mediaImages).where(inArray(mediaImages.id, mediaIds)).for("share") : [];
+        if (found.length !== mediaIds.length) throw new MissingMedia();
+
         const [saved] = id
           ? await tx.update(products).set(fields).where(eq(products.id, id)).returning({ id: products.id })
           : await tx.insert(products).values(fields).returning({ id: products.id });
@@ -173,7 +182,8 @@ export async function saveProduct(input: ProductInput): Promise<ProductResult> {
         for (const [index, row] of rows.entries()) {
           const values = { color: row.color, size: row.size, sku: row.sku, priceCents: row.price };
           if (!row.id) {
-            await tx.insert(variants).values({ ...values, productId: saved.id, stock: row.stock });
+            const [created] = await tx.insert(variants).values({ ...values, productId: saved.id, stock: row.stock }).returning({ id: variants.id });
+            if (row.stock) await tx.insert(stockMovements).values({ variantId: created!.id, delta: row.stock, stockAfter: row.stock, reason: "New variant", actorEmail: admin.email });
             continue;
           }
           const stockEdited = row.expectedStock !== undefined && row.stock !== row.expectedStock;
@@ -189,11 +199,13 @@ export async function saveProduct(input: ProductInput): Promise<ProductResult> {
             )
             .returning({ id: variants.id });
           if (!updated.length) throw new VariantConflict(index, "Stock changed while you were editing. Reload to see the current count.");
+          if (stockEdited) await tx.insert(stockMovements).values({ variantId: row.id, delta: row.stock - row.expectedStock!, stockAfter: row.stock, reason: "Product edit", actorEmail: admin.email });
         }
         return saved.id;
       });
 
       const fresh = await db.select().from(variants).where(eq(variants.productId, productId)).orderBy(asc(variants.sku));
+      await recordAudit(admin, { action: id ? "product.update" : "product.create", targetType: "product", targetId: productId, detail: fields.slug });
       refreshStore();
       return { ok: true, message: id ? "Product saved." : "Product created.", id: productId, variants: fresh.map(variantToInput) };
     } catch (error) {
@@ -205,7 +217,7 @@ export async function saveProduct(input: ProductInput): Promise<ProductResult> {
 }
 
 export async function setProductActive(productId: string, active: boolean): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.object({ productId: uuid, active: z.boolean() }).safeParse({ productId, active });
   if (!parsed.success) return fail("We could not find that product.");
   return attempt(async () => {
@@ -215,13 +227,14 @@ export async function setProductActive(productId: string, active: boolean): Prom
       .where(eq(products.id, parsed.data.productId))
       .returning({ name: products.name });
     if (!updated.length) return fail("We could not find that product.");
+    await recordAudit(admin, { action: parsed.data.active ? "product.activate" : "product.deactivate", targetType: "product", targetId: parsed.data.productId, detail: updated[0]!.name });
     refreshStore();
     return done(`${updated[0]!.name} is now ${parsed.data.active ? "active" : "inactive"}.`);
   });
 }
 
 export async function updateStock(variantId: string, stock: string, expectedStock: number): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z
     .object({
       variantId: uuid,
@@ -231,19 +244,25 @@ export async function updateStock(variantId: string, stock: string, expectedStoc
     .safeParse({ variantId, stock, expectedStock });
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Enter a valid stock count.");
   return attempt(async () => {
-    const updated = await db
-      .update(variants)
-      .set({ stock: parsed.data.stock })
-      .where(and(eq(variants.id, parsed.data.variantId), eq(variants.stock, parsed.data.expectedStock)))
-      .returning({ sku: variants.sku });
+    const { variantId: id, stock: next, expectedStock: previous } = parsed.data;
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(variants)
+        .set({ stock: next })
+        .where(and(eq(variants.id, id), eq(variants.stock, previous)))
+        .returning({ sku: variants.sku });
+      if (rows.length && next !== previous) await tx.insert(stockMovements).values({ variantId: id, delta: next - previous, stockAfter: next, reason: "Manual stock edit", actorEmail: admin.email });
+      return rows;
+    });
     refreshStore();
     if (!updated.length) return fail("Stock changed while you were editing. The current count is now shown.");
+    await recordAudit(admin, { action: "stock.set", targetType: "variant", targetId: id, detail: `${updated[0]!.sku} ${previous} to ${next}` });
     return done(`Saved ${parsed.data.stock}.`);
   });
 }
 
 export async function moveOrderStatus(input: MoveInput): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z
     .object({
       orderId: uuid,
@@ -261,8 +280,10 @@ export async function moveOrderStatus(input: MoveInput): Promise<ActionResult> {
       note: note || undefined,
       trackingNumber: to === "shipped" && trackingNumber ? trackingNumber : undefined,
       overrideBalance,
+      actorEmail: admin.email,
     });
     if ("error" in result) return fail(result.error ?? "That move is not allowed.");
+    await recordAudit(admin, { action: "order.status", targetType: "order", targetId: orderId, detail: note ? `${to}: ${note}` : to });
     refreshStore();
     return done(`Status is now ${STATUS_LABELS[to]}.`);
   } catch (error) {
@@ -306,7 +327,7 @@ const promoSchema = z.object({
 });
 
 export async function createPromo(input: PromoInput): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = promoSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { code, percentOff, minSubtotal, expiresOn, maxUses, oncePerCustomer } = parsed.data;
@@ -324,13 +345,14 @@ export async function createPromo(input: PromoInput): Promise<ActionResult> {
       if (uniqueViolation(error)) return fail("Check the highlighted fields.", { code: "This code already exists." });
       throw error;
     }
+    await recordAudit(admin, { action: "promo.create", targetType: "promo", targetId: code, detail: `${percentOff}% off` });
     refreshStore();
     return done(`${code} created.`);
   });
 }
 
 export async function setPromoActive(code: string, active: boolean): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.object({ code: z.string().min(1).max(32), active: z.boolean() }).safeParse({ code, active });
   if (!parsed.success) return fail("We could not find that code.");
   return attempt(async () => {
@@ -340,13 +362,14 @@ export async function setPromoActive(code: string, active: boolean): Promise<Act
       .where(eq(promoCodes.code, parsed.data.code))
       .returning({ code: promoCodes.code });
     if (!updated.length) return fail("We could not find that code.");
+    await recordAudit(admin, { action: parsed.data.active ? "promo.activate" : "promo.deactivate", targetType: "promo", targetId: parsed.data.code });
     refreshStore();
     return done(`${parsed.data.code} is now ${parsed.data.active ? "active" : "inactive"}.`);
   });
 }
 
 export async function setMessageHandled(messageId: string, handled: boolean): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.object({ messageId: uuid, handled: z.boolean() }).safeParse({ messageId, handled });
   if (!parsed.success) return fail("We could not find that message.");
   return attempt(async () => {
@@ -356,6 +379,7 @@ export async function setMessageHandled(messageId: string, handled: boolean): Pr
       .where(eq(contactMessages.id, parsed.data.messageId))
       .returning({ id: contactMessages.id });
     if (!updated.length) return fail("We could not find that message.");
+    await recordAudit(admin, { action: parsed.data.handled ? "message.handled" : "message.reopened", targetType: "message", targetId: parsed.data.messageId });
     refreshAdmin();
     return done(parsed.data.handled ? "Marked handled." : "Reopened.");
   });
@@ -370,7 +394,7 @@ const bespokeInput = z.strictObject({
 });
 
 export async function updateBespokeRequest(input: BespokeInput): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = bespokeInput.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { id, status, quotedPrice, depositPercent, adminNote } = parsed.data;
@@ -382,6 +406,7 @@ export async function updateBespokeRequest(input: BespokeInput): Promise<ActionR
   return attempt(async () => {
     const result = await applyAdminUpdate({ id, status, quotedPriceCents, depositPercent, adminNote });
     if ("error" in result) return fail(result.error ?? "That did not save. Try again.");
+    await recordAudit(admin, { action: "bespoke.update", targetType: "bespoke", targetId: id, detail: `${status}${quotedPriceCents ? `, quote ${quotedPriceCents} cents` : ""}${result.requote ? `, quote email ${result.emailed ? "sent" : "failed"}` : ""}` });
     refreshAdmin();
     if (result.requote && !result.emailed) return fail("Saved, but the quote email could not be sent. Try sending it again.");
     return done(result.requote ? "Saved. Quote emailed to the customer." : "Saved.");
@@ -389,12 +414,13 @@ export async function updateBespokeRequest(input: BespokeInput): Promise<ActionR
 }
 
 export async function resendBespokeQuote(requestId: string): Promise<ActionResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = uuid.safeParse(requestId);
   if (!parsed.success) return fail("We could not find that request.");
   return attempt(async () => {
     const sent = await sendQuoteEmail(parsed.data);
     if (!sent) return fail("The quote email could not be sent.");
+    await recordAudit(admin, { action: "bespoke.quote_resend", targetType: "bespoke", targetId: parsed.data });
     refreshAdmin();
     return done("Quote emailed again.");
   });

@@ -1,4 +1,8 @@
-export async function sendMail(message: { to: string; subject: string; text: string }) {
+type Mail = { to: string; subject: string; text: string; replyTo?: string; headers?: Record<string, string> };
+
+export const mailConfigured = () => Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+
+export async function sendMail({ replyTo, ...message }: Mail) {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     if (process.env.NODE_ENV === "production") {
@@ -11,7 +15,7 @@ export async function sendMail(message: { to: string; subject: string; text: str
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: process.env.MAIL_FROM, ...message }),
+    body: JSON.stringify({ from: process.env.MAIL_FROM, ...message, ...(replyTo ? { reply_to: replyTo } : {}) }),
   });
   if (!response.ok) console.error(`[mail] delivery failed with ${response.status}`);
   return response.ok;

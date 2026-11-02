@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { useMediaQuery } from "@/components/glass/hooks";
 import { designSpecSchema, type DesignSpec } from "@/lib/studio/spec";
 import { PRESS, SECONDARY, Segments, SPRING } from "./controls";
+import { StudioRatesProvider, type StudioRates } from "./rates";
 import { SavedDesigns } from "./saved";
 import { StartingPoints } from "./starting-points";
 import { SectionView, type Issues } from "./steps";
@@ -69,12 +70,14 @@ const DESKTOP_QUERY = "(min-width: 1024px)";
 const SHORT_LANDSCAPE_QUERY = "(orientation: landscape) and (max-height: 520px)";
 const STAGE_TOP_PX = 130;
 const PICKER_PX = 56;
-const BAG_SHARE = 0.5;
+const BAG_SHARE = 0.68;
 const FOOTER_PX = 128;
 const PEEK_PX = 108;
 const RUBBER_PX = 240;
 const PEEK_STAGE_SCALE = 1.15;
 const HALF_SHARE = 0.54;
+const SHORT_HALF_SHARE = 0.46;
+const SHORT_PHONE_PX = 720;
 const FULL_SHARE = 0.72;
 const DECELERATION = 0.994;
 const HISTORY_MS = 100;
@@ -350,7 +353,7 @@ function useSheet(viewport: number) {
   const reduced = useReducedMotion();
   const visibleFull = Math.round(viewport * FULL_SHARE);
   const visiblePeek = FOOTER_PX + PEEK_PX;
-  const snaps = useMemo<Snaps>(() => ({ full: 0, half: Math.max(0, visibleFull - Math.round(viewport * HALF_SHARE)), peek: Math.max(0, visibleFull - visiblePeek) }), [viewport, visibleFull, visiblePeek]);
+  const snaps = useMemo<Snaps>(() => ({ full: 0, half: Math.max(0, visibleFull - Math.round(viewport * (viewport < SHORT_PHONE_PX ? SHORT_HALF_SHARE : HALF_SHARE))), peek: Math.max(0, visibleFull - visiblePeek) }), [viewport, visibleFull, visiblePeek]);
   const y = useMotionValue(snaps.half);
   const [snap, setSnap] = useState<keyof Snaps>("half");
   const motionRef = useRef<AnimationPlaybackControls | null>(null);
@@ -673,7 +676,15 @@ function resolveStart(initial: StudioInitial, notice: string | null) {
   else setChoosing();
 }
 
-export function Studio({ initial, notice }: { initial: StudioInitial; notice: string | null }) {
+export function Studio({ initial, notice, rates }: { initial: StudioInitial; notice: string | null; rates: StudioRates }) {
+  return (
+    <StudioRatesProvider rates={rates}>
+      <StudioStage initial={initial} notice={notice} />
+    </StudioRatesProvider>
+  );
+}
+
+function StudioStage({ initial, notice }: { initial: StudioInitial; notice: string | null }) {
   const phase = useStudio((state) => state.phase);
   const startKey = initial?.source ?? null;
   const startRef = useRef({ initial, notice });

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LIMITS } from "@/lib/bespoke/design";
 import { MAX_REQUEST_BYTES } from "@/lib/bespoke/submission";
 import { publicName } from "@/lib/format";
+import { adminLoginPath, safeAdminNext } from "@/lib/safe-next";
 import { ipBucket } from "@/lib/server/client-ip";
 import { linkKey } from "@/lib/server/link-key";
 import { sendMail } from "@/lib/server/mail";
@@ -23,6 +24,22 @@ const valueImports = (file: string) => [...readFileSync(file, "utf8").matchAll(/
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+describe("admin sign-in destination", () => {
+  it("keeps admin paths with their query", () => {
+    expect(safeAdminNext("/admin")).toBe("/admin");
+    expect(safeAdminNext("/admin/orders?status=action")).toBe("/admin/orders?status=action");
+  });
+
+  it.each(["//evil.com", "https://evil.com", "/\\evil.com", "/\t/evil.com", "/account", "/administrator", "/admin/../account", "/admin/%2e%2e/account", "/admin/login", "/admin/login?next=/admin", null, undefined, 7])("falls back for %s", (next) => {
+    expect(safeAdminNext(next)).toBe("/admin");
+  });
+
+  it("builds an encoded sign-in address", () => {
+    expect(adminLoginPath("/admin/orders?status=action")).toBe("/admin/login?next=%2Fadmin%2Forders%3Fstatus%3Daction");
+    expect(adminLoginPath(null)).toBe("/admin/login?next=%2Fadmin");
+  });
 });
 
 describe("mail", () => {

@@ -1,4 +1,5 @@
-import { COLORS, FINISHES, METALS, PATTERNS, THREADS, type DesignSpec } from "./spec";
+import { HARDWARE, type HardwareKind } from "../bespoke/design";
+import { COLORS, FINISHES, METALS, PATTERNS, THREADS, type DesignSpec, type FinishKey } from "./spec";
 
 export type PriceLine = { label: string; cents: number };
 export type DesignQuote = { lines: PriceLine[]; totalCents: number; leadWeeks: number; areaDm2: number };
@@ -8,6 +9,58 @@ export const LABOUR_CENTS_PER_HOUR = 700;
 export const WASTAGE = 1.35;
 export const MARGIN = 1.6;
 export const ROUND_TO_CENTS = 500;
+
+type MetalKey = keyof typeof METALS;
+type PatternKey = keyof typeof PATTERNS;
+
+const costs = <K extends string>(record: Record<K, { cents: number }>) =>
+  Object.fromEntries(Object.entries<{ cents: number }>(record).map(([key, value]) => [key, value.cents])) as Record<K, number>;
+
+export type StudioPricing = {
+  baseCents: number;
+  labourCentsPerHour: number;
+  wastage: number;
+  margin: number;
+  roundToCents: number;
+  finishCentsPerDm2: Record<FinishKey, number>;
+  metalCents: Record<MetalKey, number>;
+  patternCents: Record<PatternKey, number>;
+  zipCents: number;
+  zipPocketCents: number;
+  flapClaspCents: number;
+  handleCents: number;
+  strapCents: number;
+  feetCents: number;
+  blindMonogramCents: number;
+  foilMonogramCents: number;
+  bespokeLogoCents: number;
+  bespokeLowSpread: number;
+  bespokeHighSpread: number;
+  hardwareCents: Record<HardwareKind, number>;
+};
+
+export const DEFAULT_PRICING: StudioPricing = {
+  baseCents: ATELIER_BASE_CENTS,
+  labourCentsPerHour: LABOUR_CENTS_PER_HOUR,
+  wastage: WASTAGE,
+  margin: MARGIN,
+  roundToCents: ROUND_TO_CENTS,
+  finishCentsPerDm2: Object.fromEntries(Object.entries(FINISHES).map(([key, value]) => [key, value.centsPerDm2])) as Record<FinishKey, number>,
+  metalCents: costs(METALS),
+  patternCents: costs(PATTERNS),
+  zipCents: 500,
+  zipPocketCents: 400,
+  flapClaspCents: 900,
+  handleCents: 400,
+  strapCents: 1000,
+  feetCents: 300,
+  blindMonogramCents: 800,
+  foilMonogramCents: 1500,
+  bespokeLogoCents: 2500,
+  bespokeLowSpread: 0.9,
+  bespokeHighSpread: 1.25,
+  hardwareCents: costs(HARDWARE),
+};
 
 function panelAreas(spec: DesignSpec) {
   const { width, height, depth, taper } = spec.form;
@@ -19,7 +72,7 @@ function panelAreas(spec: DesignSpec) {
   return { face, gusset, flap };
 }
 
-export function quoteDesign(spec: DesignSpec): DesignQuote {
+export function quoteDesign(spec: DesignSpec, pricing: StudioPricing = DEFAULT_PRICING): DesignQuote {
   const { face, gusset, flap } = panelAreas(spec);
   const accentShare = { single: 0, yoke: 1 - spec.panels.divide, split: 0.5, diagonal: 0.5, tipped: 0.2 }[spec.panels.layout];
   const faces = face * 2 + flap;
@@ -27,10 +80,10 @@ export function quoteDesign(spec: DesignSpec): DesignQuote {
   const accentArea = faces * accentShare;
 
   const leather = Math.round(
-    (primaryArea * FINISHES[spec.panels.primary.finish].centsPerDm2 +
-      accentArea * FINISHES[spec.panels.accent.finish].centsPerDm2 +
-      gusset * FINISHES[spec.panels.gusset.finish].centsPerDm2) *
-      WASTAGE,
+    (primaryArea * pricing.finishCentsPerDm2[spec.panels.primary.finish] +
+      accentArea * pricing.finishCentsPerDm2[spec.panels.accent.finish] +
+      gusset * pricing.finishCentsPerDm2[spec.panels.gusset.finish]) *
+      pricing.wastage,
   );
 
   const hours =
@@ -46,28 +99,28 @@ export function quoteDesign(spec: DesignSpec): DesignQuote {
     (6 - spec.stitch.length) * 0.35;
 
   const fittings =
-    (spec.closure.type === "zip" ? 500 : 0) +
-    (spec.pocket === "zip" ? 400 : 0) +
-    (spec.closure.type === "flap" && spec.closure.clasp !== "none" ? 900 : 0) +
-    spec.carry.handles * 400 +
-    (spec.carry.strap ? 1000 : 0) +
-    (spec.hardware.feet ? 300 : 0) +
-    METALS[spec.hardware.metal].cents;
+    (spec.closure.type === "zip" ? pricing.zipCents : 0) +
+    (spec.pocket === "zip" ? pricing.zipPocketCents : 0) +
+    (spec.closure.type === "flap" && spec.closure.clasp !== "none" ? pricing.flapClaspCents : 0) +
+    spec.carry.handles * pricing.handleCents +
+    (spec.carry.strap ? pricing.strapCents : 0) +
+    (spec.hardware.feet ? pricing.feetCents : 0) +
+    pricing.metalCents[spec.hardware.metal];
 
-  const pattern = Math.round(PATTERNS[spec.surface.pattern].cents * Math.max(0.3, faces / 12));
-  const monogram = spec.monogram.text.trim() ? (spec.monogram.technique === "blind" ? 800 : 1500) : 0;
+  const pattern = Math.round(pricing.patternCents[spec.surface.pattern] * Math.max(0.3, faces / 12));
+  const monogram = spec.monogram.text.trim() ? (spec.monogram.technique === "blind" ? pricing.blindMonogramCents : pricing.foilMonogramCents) : 0;
 
   const lines: PriceLine[] = [
-    { label: "Pattern cutting and setup", cents: ATELIER_BASE_CENTS },
-    { label: `Leather, ${(faces + gusset).toFixed(1)} dm²`, cents: Math.round(leather * MARGIN) },
-    { label: `Handwork, ${hours.toFixed(1)} hours`, cents: Math.round(hours * LABOUR_CENTS_PER_HOUR * MARGIN) },
+    { label: "Pattern cutting and setup", cents: pricing.baseCents },
+    { label: `Leather, ${(faces + gusset).toFixed(1)} dm²`, cents: Math.round(leather * pricing.margin) },
+    { label: `Handwork, ${hours.toFixed(1)} hours`, cents: Math.round(hours * pricing.labourCentsPerHour * pricing.margin) },
   ];
-  if (fittings) lines.push({ label: "Hardware and fittings", cents: Math.round(fittings * MARGIN) });
+  if (fittings) lines.push({ label: "Hardware and fittings", cents: Math.round(fittings * pricing.margin) });
   if (pattern) lines.push({ label: PATTERNS[spec.surface.pattern].name, cents: pattern });
   if (monogram) lines.push({ label: "Monogram", cents: monogram });
 
   const raw = lines.reduce((sum, line) => sum + line.cents, 0);
-  const totalCents = Math.ceil(raw / ROUND_TO_CENTS) * ROUND_TO_CENTS;
+  const totalCents = Math.ceil(raw / pricing.roundToCents) * pricing.roundToCents;
   const rounding = totalCents - raw;
   if (rounding) lines[0] = { label: lines[0]!.label, cents: lines[0]!.cents + rounding };
 

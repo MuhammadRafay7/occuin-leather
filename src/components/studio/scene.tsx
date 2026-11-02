@@ -23,6 +23,7 @@ import {
   type GrainTile,
   type PaintedSurface,
 } from "@/lib/studio/textures";
+import { takeShot, type ShotTaker } from "./shot";
 import { captureBridge, useStudio, type ViewName } from "./store";
 
 const FOV = 26;
@@ -515,6 +516,19 @@ function CaptureBridge({ bag }: { bag: BagGeometry | null }) {
   return null;
 }
 
+function ShotBridge({ bag, ready, shotRef }: { bag: BagGeometry | null; ready: boolean; shotRef?: RefObject<ShotTaker | null> }) {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  useEffect(() => {
+    if (!shotRef || !bag || !ready) return;
+    shotRef.current = (angle) => takeShot(gl, scene, bag.radius, new THREE.Vector3(0, bag.centerY, 0), angle);
+    return () => {
+      shotRef.current = null;
+    };
+  }, [bag, gl, ready, scene, shotRef]);
+  return null;
+}
+
 function ReadySignal({ ready, onReady }: { ready: boolean; onReady?: () => void }) {
   const frames = useRef(0);
   const done = useRef(false);
@@ -947,7 +961,7 @@ function exposeStoreInDevelopment() {
   (window as unknown as { __occuinStudio?: typeof useStudio }).__occuinStudio = useStudio;
 }
 
-function Studio({ spec, interactive, spin, paused, reduced, quality, onReady }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void }) {
+function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, shotRef }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void; shotRef?: RefObject<ShotTaker | null> }) {
   const [forced, setForced] = useState<DesignSpec | null>(null);
   const active = forced ?? spec;
   const section = useStudio((state) => state.section);
@@ -1021,15 +1035,16 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady }: 
         </>
       ) : null}
       <CaptureBridge bag={bag} />
+      <ShotBridge bag={bag} ready={Boolean(settled && loaded && environment)} shotRef={shotRef} />
       <StillBridge forceSpec={setForced} settled={settled && loaded} bag={bag} environment={environment?.texture ?? null} materials={materials} />
       <ReadySignal ready={Boolean(bag && surfaces && environment && loaded)} onReady={onReady} />
     </>
   );
 }
 
-export default function Scene({ spec, interactive = true, spin = false, lite = false, paused = false, onReady, onContextLost }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void }) {
+export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, shotRef }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; shotRef?: RefObject<ShotTaker | null> }) {
   const [reduced, setReduced] = useState(false);
-  const [quality] = useState(() => (lite ? liteQuality() : detectQuality()));
+  const [quality] = useState(() => (still ? STILL_QUALITY : lite ? liteQuality() : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
 
   useEffect(() => {
@@ -1055,7 +1070,7 @@ export default function Scene({ spec, interactive = true, spin = false, lite = f
         gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.());
       }}
     >
-      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} />
+      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} shotRef={shotRef} />
     </Canvas>
   );
 }

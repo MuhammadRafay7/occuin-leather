@@ -144,7 +144,7 @@ export function LensFrame({ image, priority, ratio, sizes, onOpen }: Props) {
       onPointerMove={move}
       onPointerLeave={() => setActive(false)}
       style={{ "--ratio": ratio } as CSSProperties}
-      className="relative aspect-square max-h-[calc(100svh-96px)] w-full shrink-0 snap-start md:aspect-[4/3] lg:aspect-auto lg:h-full lg:max-h-none"
+      className="relative aspect-square max-h-[calc(100svh-96px)] w-full shrink-0 snap-start md:aspect-[4/3] short:aspect-auto short:h-[calc(100svh-146px)] lg:aspect-auto lg:h-full lg:max-h-none"
     >
       <button
         type="button"

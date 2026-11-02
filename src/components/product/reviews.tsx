@@ -1,7 +1,7 @@
 import { Star } from "@phosphor-icons/react/dist/ssr";
 import { and, eq } from "drizzle-orm";
 import Link from "next/link";
-import { longDate } from "@/lib/format";
+import { BRAND, longDate } from "@/lib/format";
 import { getUser } from "@/lib/server/auth";
 import { getReviews } from "@/lib/server/catalog";
 import { db, schema } from "@/lib/server/db";
@@ -57,6 +57,12 @@ export async function Reviews({ productId, slug }: { productId: string; slug: st
                 <h3 className="text-sm font-medium">{item.title}</h3>
                 <p className="max-w-[65ch] text-sm">{item.body}</p>
                 <p className="text-xs text-muted">{item.author.split(" ")[0]}, {longDate(item.createdAt)}</p>
+                {item.reply ? (
+                  <div className="mt-1 max-w-[65ch] border-l border-line pl-3">
+                    <p className="text-xs text-muted">Reply from {BRAND.name}{item.repliedAt ? `, ${longDate(item.repliedAt)}` : ""}</p>
+                    <p className="whitespace-pre-line text-sm">{item.reply}</p>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -1,16 +1,25 @@
+import { Bell, PencilRuler, Scissors } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PRODUCT_TYPES, type ProductType } from "@/lib/bespoke/design";
-import { BESPOKE_STATUS_LABELS, BESPOKE_STATUSES, bespokeRef } from "@/lib/bespoke/status";
+import { BESPOKE_STATUS_LABELS, BESPOKE_STATUSES, bespokeRef, type BespokeStatus } from "@/lib/bespoke/status";
 import { money } from "@/lib/format";
 import { requireAdmin } from "@/lib/server/auth";
 import { awaitingReply } from "@/lib/server/bespoke";
-import { countryName } from "@/lib/validation";
-import { AdminTitle, controlClass, Empty, Filters, linkClass, Pagination, Table, Tag } from "../_components/ui";
-import { dateTime, param, type SearchParams } from "../_lib/format";
+import { AdminTitle, BespokeBadge, Empty, linkClass, MetricCard, Pagination, Table, Tag as StatusTag } from "../_components/ui";
+import { param, shortDate, type SearchParams } from "../_lib/format";
 import { countBespoke, listBespoke, pageOf } from "../_lib/queries";
+import { DesktopOnly, FilterTabs, MobileCard, MobileCards, StatStrip, ViewLink } from "../orders/sales-ui";
 
 export const metadata: Metadata = { title: "Bespoke" };
+
+const MAIN_STATUSES: BespokeStatus[] = ["new", "changes_requested", "quoted", "in_production"];
+const WAITING_ON_US: BespokeStatus[] = ["new", "question", "changes_requested"];
+const toTab = (value: BespokeStatus) => ({ label: BESPOKE_STATUS_LABELS[value], value: value as string });
+const MAIN_TABS = [{ label: "All", value: "" }, ...MAIN_STATUSES.map(toTab)];
+const STATUS_TABS = [...MAIN_TABS, ...BESPOKE_STATUSES.filter((value) => !MAIN_STATUSES.includes(value)).map(toTab)];
+
+const countOf = (counts: number[], value: string) => counts[STATUS_TABS.findIndex((tab) => tab.value === value)] ?? 0;
 
 export default async function AdminBespoke({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
@@ -18,45 +27,69 @@ export default async function AdminBespoke({ searchParams }: { searchParams: Pro
   const status = param(search, "status");
   const total = await countBespoke(status);
   const { page, last, offset } = pageOf(search, total);
-  const rows = await listBespoke(status, offset);
+  const [rows, counts] = await Promise.all([listBespoke(status, offset), Promise.all(STATUS_TABS.map((tab) => countBespoke(tab.value)))]);
   const waiting = await awaitingReply(rows.map((row) => row.id));
+  const tabs = STATUS_TABS.map((tab, index) => ({
+    label: tab.label,
+    count: counts[index],
+    active: status === tab.value,
+    href: { pathname: "/admin/bespoke", query: tab.value ? { status: tab.value } : {} },
+  }));
 
   return (
     <>
-      <AdminTitle sub="Designs customers drew from scratch at /studio/create.">Bespoke</AdminTitle>
-      <Filters path="/admin/bespoke">
-        <label className="grid gap-1 text-xs text-muted">
-          Status
-          <select name="status" defaultValue={status} className={`${controlClass} w-48`}>
-            <option value="">All statuses</option>
-            {BESPOKE_STATUSES.map((value) => (
-              <option key={value} value={value}>{BESPOKE_STATUS_LABELS[value]}</option>
-            ))}
-          </select>
-        </label>
-      </Filters>
+      <AdminTitle sub="Custom designs customers sent from the studio. Open one to reply and send a price.">Bespoke</AdminTitle>
+      <StatStrip columns={3}>
+        <MetricCard icon={<Bell size={16} />} label="Waiting for you" value={WAITING_ON_US.reduce((sum, value) => sum + countOf(counts, value), 0)} description="New, questions and change requests" />
+        <MetricCard icon={<Scissors size={16} />} label="Being made" value={countOf(counts, "in_production")} href="/admin/bespoke?status=in_production" />
+        <MetricCard icon={<PencilRuler size={16} />} label="All requests" value={countOf(counts, "")} href="/admin/bespoke" />
+      </StatStrip>
+
+      <FilterTabs label="Request status" tabs={tabs.slice(0, MAIN_TABS.length)} more={tabs.slice(MAIN_TABS.length)} />
 
       {rows.length ? (
         <>
-          <Table caption="Bespoke requests" head={["Reference", "Received", "Customer", "Product", "Estimate", "Quoted", "Status"]} minWidth="min-w-[860px]">
+          <DesktopOnly>
+            <Table caption="Bespoke requests" head={["Request", "Customer", "Product", "Price", "Status", "Actions"]} right={["Price", "Actions"]}>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/admin/bespoke/${row.id}`} className={linkClass}>{bespokeRef(row.number)}</Link>
+                    <span className="block text-xs text-muted">{shortDate(row.createdAt)}</span>
+                  </td>
+                  <td>
+                    {row.name}
+                    <span className="block text-xs text-muted [overflow-wrap:anywhere]">{row.email}</span>
+                  </td>
+                  <td>{PRODUCT_TYPES[row.productType as ProductType] ?? row.productType}</td>
+                  <td className="font-medium tabular-nums">{row.quotedPriceCents ? money(row.quotedPriceCents) : <span className="font-normal text-muted">Not priced</span>}</td>
+                  <td>
+                    <span className="flex flex-wrap gap-1">
+                      <BespokeBadge status={row.status} />
+                      {waiting.has(row.id) ? <StatusTag tone="danger">Awaiting reply</StatusTag> : null}
+                    </span>
+                  </td>
+                  <td><ViewLink href={`/admin/bespoke/${row.id}`} label={`View ${bespokeRef(row.number)}`} /></td>
+                </tr>
+              ))}
+            </Table>
+          </DesktopOnly>
+          <MobileCards label="Bespoke requests">
             {rows.map((row) => (
-              <tr key={row.id}>
-                <td><Link href={`/admin/bespoke/${row.id}`} className={linkClass}>{bespokeRef(row.number)}</Link></td>
-                <td className="whitespace-nowrap">{dateTime(row.createdAt)}</td>
-                <td>
-                  {row.name}
-                  <span className="block text-xs text-muted">{row.email}, {countryName(row.country)}</span>
-                </td>
-                <td>{PRODUCT_TYPES[row.productType as ProductType] ?? row.productType}</td>
-                <td className="whitespace-nowrap tabular-nums">{money(row.estimateLowCents)} to {money(row.estimateHighCents)}</td>
-                <td className="tabular-nums">{row.quotedPriceCents ? money(row.quotedPriceCents) : <span className="text-muted">None</span>}</td>
-                <td className="whitespace-nowrap">
-                  <Tag tone={row.status === "declined" ? "muted" : "plain"}>{BESPOKE_STATUS_LABELS[row.status]}</Tag>
-                  {waiting.has(row.id) ? <span className="ml-1"><Tag tone="danger">Awaiting reply</Tag></span> : null}
-                </td>
-              </tr>
+              <MobileCard
+                key={row.id}
+                title={<Link href={`/admin/bespoke/${row.id}`} className={linkClass}>{bespokeRef(row.number)}</Link>}
+                sub={<><span className="block text-fg">{row.name}</span>{row.email}</>}
+                chip={<><BespokeBadge status={row.status} />{waiting.has(row.id) ? <StatusTag tone="danger">Awaiting reply</StatusTag> : null}</>}
+                rows={[
+                  ["Product", PRODUCT_TYPES[row.productType as ProductType] ?? row.productType],
+                  ["Price", row.quotedPriceCents ? money(row.quotedPriceCents) : "Not priced"],
+                ]}
+              >
+                <ViewLink href={`/admin/bespoke/${row.id}`} label={`View ${bespokeRef(row.number)}`} />
+              </MobileCard>
             ))}
-          </Table>
+          </MobileCards>
           <Pagination path="/admin/bespoke" search={search} page={page} last={last} total={total} />
         </>
       ) : (

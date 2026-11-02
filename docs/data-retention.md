@@ -18,8 +18,9 @@ Deletion is refused while an order is open (pending, paid, in production, shippe
 ## Kept after account deletion
 | Data | Why |
 |---|---|
-| Orders, including email and shipping address, detached from the account | Tax, accounting and returns records |
+| Orders, including email, shipping address and any phone number, detached from the account | Tax, accounting and returns records |
 | Bespoke requests tied to an order, with name, email, phone, notes, messages and reference images removed. The design stays | Record of what was made and sold |
+| Order line copies of the design and product details, with notes, logos and reference images removed and manufacturer links revoked | Record of what was made and sold |
 
 ## No automatic removal yet
 Orders, order addresses, guest bags, guest designs, bespoke requests, bespoke images, logos, contact messages and newsletter entries stay until someone removes them.

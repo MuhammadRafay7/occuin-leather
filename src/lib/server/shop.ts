@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { DEPARTMENTS, listCategories, type Department } from "./catalog";
 
-export const categoryPath = (department: string, slug: string) =>
-  `/shop/${department}/${slug.replace("leather-", "")}`;
+const pathSegment = (slug: string) => slug.replace(/^leather-/, "");
+
+export const categoryPath = (department: string, slug: string) => `/shop/${department}/${pathSegment(slug)}`;
 
 export function resolveDepartment(value: string): Department {
   if (!Object.hasOwn(DEPARTMENTS, value)) notFound();
@@ -11,7 +12,7 @@ export function resolveDepartment(value: string): Department {
 
 export async function resolveCategory(department: Department, value: string) {
   const categories = await listCategories(department);
-  const category = categories.find((item) => item.slug === `leather-${value}`);
+  const category = categories.find((item) => pathSegment(item.slug) === value);
   if (!category) notFound();
   return category;
 }

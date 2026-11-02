@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -18,14 +18,15 @@ import {
 import { clientIp } from "@/lib/server/client-ip";
 import { db, schema } from "@/lib/server/db";
 import { sendMail } from "@/lib/server/mail";
+import { issueReset } from "@/lib/server/password-reset";
 import { fieldErrors, formText as text, type FormState } from "@/lib/form-state";
-import { safeNext } from "@/lib/safe-next";
+import { ADMIN_LOGIN, safeAdminNext, safeNext } from "@/lib/safe-next";
 import { emailField, newPasswordField } from "@/lib/validation";
 
 const { passwordResets, sessions, users } = schema;
-const RESET_MS = 3_600_000;
 const TOO_MANY = "Too many attempts. Try again in a few minutes.";
 const BAD_LOGIN = "That email and password do not match.";
+const BLOCKED_LOGIN = "This account cannot sign in. Contact us if you think this is a mistake.";
 const RESET_SENT = "If that email has an account, a reset link is on its way. It works for one hour.";
 
 const loginSchema = z.object({ email: emailField, password: z.string().min(1).max(128) });
@@ -46,14 +47,14 @@ const findUserByEmail = async (email: string) => {
   return user;
 };
 
-async function enterSession(userId: string, next: unknown): Promise<never> {
+async function enterSession(userId: string, destination: string): Promise<never> {
   await startSession(userId);
   await adoptGuestData(userId);
   revalidatePath("/", "layout");
-  redirect(safeNext(next));
+  redirect(destination);
 }
 
-export async function signIn(_: FormState, data: FormData): Promise<FormState> {
+async function checkLogin(data: FormData) {
   const values = { email: text(data, "email") };
   const parsed = loginSchema.safeParse({ email: values.email, password: text(data, "password") });
   if (!parsed.success) return { error: BAD_LOGIN, values };
@@ -68,8 +69,21 @@ export async function signIn(_: FormState, data: FormData): Promise<FormState> {
   const user = await findUserByEmail(email);
   const matches = await checkPassword(user?.passwordHash ?? (await decoy()), password);
   if (!user || !matches) return { error: BAD_LOGIN, values };
+  return { user, values };
+}
 
-  return enterSession(user.id, data.get("next"));
+export async function signIn(_: FormState, data: FormData): Promise<FormState> {
+  const { user, error, values } = await checkLogin(data);
+  if (!user) return { error, values };
+  if (user.blockedAt) return { error: BLOCKED_LOGIN, values };
+  return enterSession(user.id, safeNext(data.get("next")));
+}
+
+export async function signInAdmin(_: FormState, data: FormData): Promise<FormState> {
+  const { user, error, values } = await checkLogin(data);
+  if (!user) return { error, values };
+  if (user.blockedAt || user.role !== "admin") return { error: BAD_LOGIN, values };
+  return enterSession(user.id, safeAdminNext(data.get("next")));
 }
 
 export async function register(_: FormState, data: FormData): Promise<FormState> {
@@ -97,27 +111,7 @@ export async function register(_: FormState, data: FormData): Promise<FormState>
     return { error: "We could not create that account. If you already have one, sign in or reset your password.", values };
   }
 
-  return enterSession(user.id, data.get("next"));
-}
-
-async function issueReset(email: string) {
-  const user = await findUserByEmail(email);
-  await db.delete(passwordResets).where(lt(passwordResets.expiresAt, new Date()));
-  if (!user) return;
-  const token = newToken();
-  await db.transaction(async (tx) => {
-    await tx.delete(passwordResets).where(eq(passwordResets.userId, user.id));
-    await tx.insert(passwordResets).values({
-      tokenHash: tokenHash(token),
-      userId: user.id,
-      expiresAt: new Date(Date.now() + RESET_MS),
-    });
-  });
-  await sendMail({
-    to: user.email,
-    subject: "Reset your OCCUIN password",
-    text: `Use this link to choose a new password. It works for one hour.\n${process.env.APP_URL ?? ""}/reset?token=${token}\nIf you did not ask for this, ignore this email.`,
-  });
+  return enterSession(user.id, safeNext(data.get("next")));
 }
 
 export async function requestReset(_: FormState, data: FormData): Promise<FormState> {
@@ -166,4 +160,10 @@ export async function signOut() {
   await endSession();
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export async function signOutAdmin() {
+  await endSession();
+  revalidatePath("/", "layout");
+  redirect(ADMIN_LOGIN);
 }

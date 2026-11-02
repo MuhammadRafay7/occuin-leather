@@ -20,6 +20,7 @@ import type { DesignSpec } from "../studio/spec";
 import type { DesignQuote } from "../studio/pricing";
 import { ORDER_STATUSES } from "../order-status";
 import type { BespokeDesign } from "../bespoke/design";
+import type { BespokeSnapshot, ProductSnapshot } from "../manufacturer/snapshot";
 import { DEPOSIT_PERCENT } from "../bespoke/config";
 import { BESPOKE_STATUSES } from "../bespoke/status";
 
@@ -37,6 +38,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull().default("customer"),
+  blockedAt: timestamp("blocked_at", { withTimezone: true }),
+  adminNote: text("admin_note").notNull().default(""),
   createdAt: createdAt(),
 });
 
@@ -179,10 +182,12 @@ export const orders = pgTable(
     totalCents: bigint("total_cents", { mode: "number" }).notNull(),
     stripeSessionId: text("stripe_session_id").unique(),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
+    paymentMethod: text("payment_method").$type<"whatsapp" | "stripe">().notNull().default("stripe"),
     shippingMethod: text("shipping_method").notNull().default("standard"),
     promoCode: text("promo_code"),
     shippingAddress: jsonb("shipping_address").$type<ShippingAddress>(),
     trackingNumber: text("tracking_number"),
+    makingDays: integer("making_days"),
     createdAt: createdAt(),
   },
   (t) => [index("orders_owner_idx").on(t.ownerKey), index("orders_status_idx").on(t.status)],
@@ -196,6 +201,7 @@ export type ShippingAddress = {
   state?: string;
   postalCode: string;
   country: string;
+  phone?: string;
 };
 
 export const orderItems = pgTable(
@@ -214,8 +220,49 @@ export const orderItems = pgTable(
     quantity: integer("quantity").notNull(),
     designSpec: jsonb("design_spec").$type<DesignSpec>(),
     designPrice: jsonb("design_price").$type<DesignQuote>(),
+    productSnapshot: jsonb("product_snapshot").$type<ProductSnapshot>(),
+    bespokeSnapshot: jsonb("bespoke_snapshot").$type<BespokeSnapshot>(),
+    sentToMakerAt: timestamp("sent_to_maker_at", { withTimezone: true }),
+    sentToMakerBy: text("sent_to_maker_by"),
   },
   (t) => [index("order_items_order_idx").on(t.orderId)],
+);
+
+export const orderItemFiles = pgTable(
+  "order_item_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderItemId: uuid("order_item_id").notNull().references(() => orderItems.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    slot: text("slot").notNull(),
+    label: text("label").notNull().default(""),
+    contentType: text("content_type").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    byteSize: integer("byte_size").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("order_item_files_kind", sql`${t.kind} in ('view', 'photo', 'logo', 'reference')`),
+    check("order_item_files_size", sql`${t.byteSize} between 1 and 4194304`),
+    uniqueIndex("order_item_files_slot").on(t.orderItemId, t.kind, t.slot),
+  ],
+);
+
+export const manufacturerLinks = pgTable(
+  "manufacturer_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+    includeAddress: boolean("include_address").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdBy: text("created_by").notNull(),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("manufacturer_links_order_idx").on(t.orderId)],
 );
 
 export const orderEvents = pgTable(
@@ -268,6 +315,9 @@ export const reviews = pgTable(
     rating: integer("rating").notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
+    hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    reply: text("reply"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -288,6 +338,8 @@ export const contactMessages = pgTable("contact_messages", {
   topic: text("topic").notNull(),
   message: text("message").notNull(),
   handled: boolean("handled").notNull().default(false),
+  reply: text("reply"),
+  repliedAt: timestamp("replied_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -401,3 +453,70 @@ export const bespokeMessages = pgTable(
   },
   (t) => [check("bespoke_message_author", sql`${t.author} in ('customer', 'team')`), index("bespoke_messages_request_idx").on(t.requestId)],
 );
+
+export const adminAuditLog = pgTable(
+  "admin_audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    actorEmail: text("actor_email").notNull(),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    detail: text("detail").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (t) => [index("admin_audit_created_idx").on(t.createdAt), index("admin_audit_target_idx").on(t.targetType, t.targetId)],
+);
+
+export const siteSettings = pgTable("site_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const siteContent = pgTable("site_content", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    variantId: uuid("variant_id").notNull().references(() => variants.id, { onDelete: "cascade" }),
+    delta: integer("delta").notNull(),
+    stockAfter: integer("stock_after").notNull(),
+    reason: text("reason").notNull(),
+    actorEmail: text("actor_email"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("stock_movements_variant_idx").on(t.variantId, t.createdAt)],
+);
+
+export const orderRefunds = pgTable(
+  "order_refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    reason: text("reason").notNull(),
+    stripeRefundId: text("stripe_refund_id"),
+    actorEmail: text("actor_email").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [check("order_refunds_positive", sql`${t.amountCents} > 0`), index("order_refunds_order_idx").on(t.orderId)],
+);
+
+export const mediaImages = pgTable("media_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  bytes: bytea("bytes").notNull(),
+  createdAt: createdAt(),
+});

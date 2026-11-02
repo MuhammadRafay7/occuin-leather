@@ -6,13 +6,16 @@ import { z } from "zod";
 import { getOwnerKey, hitRateLimit } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/client-ip";
 import { orderToken } from "@/lib/server/order-access";
+import { getSettings, pausedMessage, paymentModeOf } from "@/lib/server/settings";
 import { findOrderByRef, placeOrder, type CheckoutResult } from "@/lib/server/orders";
 import { SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
 import { fieldErrors, textValues, type FormState } from "@/lib/form-state";
-import { addressInput, addressSchema, emailField } from "@/lib/validation";
+import { addressInput, addressSchema, emailField, phoneField } from "@/lib/validation";
 
 const TOO_MANY = "Too many attempts. Try again in a few minutes.";
 const NOT_FOUND = "We could not find an order with those details.";
+const NOT_PLACED = "We could not place your order. You have not been charged. Please try again.";
+const WHATSAPP_ORDERS_PER_DAY = 20;
 
 const contactSchema = z.object({
   email: emailField,
@@ -27,30 +30,48 @@ export async function submitCheckout(_: FormState, data: FormData): Promise<Form
   const owner = await getOwnerKey();
   if (!owner) redirect("/bag");
 
+  const settings = await getSettings().catch(() => null);
+  if (!settings) return { error: NOT_PLACED };
+  const payment = paymentModeOf(settings);
+  const whatsapp = payment === "whatsapp";
+
   const contact = contactSchema.safeParse({ email: data.get("email"), method: data.get("method") });
   const address = addressSchema.safeParse(addressInput(data));
-  if (!contact.success || !address.success) {
+  const phone = whatsapp ? phoneField.safeParse(data.get("phone")) : null;
+  if (!contact.success || !address.success || phone?.success === false) {
     return {
       error: "Check the marked fields.",
       fields: {
         ...(contact.success ? {} : fieldErrors(contact.error)),
         ...(address.success ? {} : fieldErrors(address.error)),
+        ...(phone?.success === false ? { phone: phone.error.issues[0]?.message ?? "Enter your phone number." } : {}),
       },
     };
   }
 
-  const [ownerLimited, ipLimited] = await Promise.all([
+  const ip = await clientIp();
+  const [ownerLimited, ipLimited, dailyLimited] = await Promise.all([
     hitRateLimit(`checkout:owner:${owner}`, 10, 600),
-    hitRateLimit(`checkout:ip:${await clientIp()}`, 30, 600),
+    hitRateLimit(`checkout:ip:${ip}`, 30, 600),
+    whatsapp ? hitRateLimit(`checkout:whatsapp:ip:${ip}`, WHATSAPP_ORDERS_PER_DAY, 86_400) : false,
   ]);
-  if (ownerLimited || ipLimited) return { error: TOO_MANY };
+  if (ownerLimited || ipLimited || dailyLimited) return { error: TOO_MANY };
 
   let result: CheckoutResult;
   try {
-    result = await placeOrder({ ownerKey: owner, email: contact.data.email, address: address.data, method: contact.data.method });
+    const paused = pausedMessage(settings);
+    if (paused) return { error: paused };
+    result = await placeOrder({
+      ownerKey: owner,
+      email: contact.data.email,
+      address: phone?.data ? { ...address.data, phone: phone.data } : address.data,
+      method: contact.data.method,
+      rates: settings,
+      payment,
+    });
   } catch (error) {
     console.error("[checkout] order failed", error);
-    return { error: "We could not place your order. You have not been charged. Please try again." };
+    return { error: NOT_PLACED };
   }
   if ("error" in result) {
     if (result.error === "Your bag is empty.") redirect("/bag");

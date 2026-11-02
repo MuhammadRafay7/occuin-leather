@@ -11,6 +11,7 @@ import { bodyOf, contains, groupBounds, holeOutlines, isSolidPanel, layerOrder, 
 import { COLORS, METALS, THREADS, type FinishKey, type Hide } from "@/lib/studio/spec";
 import { createLeather, dressLeather, lightingUniforms, loadGrainTile, patchLighting, shade, threadBump, type GrainTile } from "@/lib/studio/textures";
 import { chainLinks, flatPanel, liningPlate, makeSurface, shellPanel, stitchesOn, THICKNESS_MM, tubeGeometry, tubeHeight, tubeStitches, UNIT, wallStrip, type Frame, type Stitch } from "./forms";
+import { takeShot, type ShotTaker } from "@/components/studio/shot";
 import type { PreviewView } from "./stage";
 
 const STACK_GAP_MM = 0.5;
@@ -581,7 +582,20 @@ function CameraRig({ controls, radius, height, reduced, view }: { controls: RefO
   return null;
 }
 
-function Workshop({ design, view, reduced, lookInside }: { design: BespokeDesign; view: { key: PreviewView; nonce: number }; reduced: boolean; lookInside: boolean }) {
+function ShotBridge({ radius, centerY, ready, shotRef }: { radius: number; centerY: number; ready: boolean; shotRef?: RefObject<ShotTaker | null> }) {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  useEffect(() => {
+    if (!shotRef || !ready) return;
+    shotRef.current = (angle) => takeShot(gl, scene, radius, new THREE.Vector3(0, centerY, 0), angle);
+    return () => {
+      shotRef.current = null;
+    };
+  }, [centerY, gl, radius, ready, scene, shotRef]);
+  return null;
+}
+
+function Workshop({ design, view, reduced, lookInside, shotRef }: { design: BespokeDesign; view: { key: PreviewView; nonce: number }; reduced: boolean; lookInside: boolean; shotRef?: RefObject<ShotTaker | null> }) {
   const invalidate = useThree((state) => state.invalidate);
   useEnvironment();
   const finishes = [...new Set([...design.pieces.map((piece) => piece.finish), "suede"])].sort().join(",");
@@ -618,6 +632,7 @@ function Workshop({ design, view, reduced, lookInside }: { design: BespokeDesign
       <directionalLight position={[radius * 1.4, radius * 3, radius * 2.2]} intensity={1.1} castShadow shadow-mapSize={[1536, 1536]} shadow-bias={-0.00025} shadow-normalBias={0.02} shadow-radius={7} shadow-camera-left={-radius * 1.8} shadow-camera-right={radius * 1.8} shadow-camera-top={radius * 1.8} shadow-camera-bottom={-radius * 1.8} shadow-camera-near={0.1} shadow-camera-far={radius * 10} />
       <OrbitControls ref={controls} enablePan={false} enableDamping={!reduced} dampingFactor={0.08} minDistance={radius * 0.6} maxDistance={fitDistance(radius, 1) * 2.4} maxPolarAngle={Math.PI * 0.6} />
       <CameraRig controls={controls} radius={radius} height={heightUnits} reduced={reduced} view={view} />
+      <ShotBridge radius={radius} centerY={heightUnits / 2 + radius * 0.04} ready={Boolean(layout) && (finishes.split(",") as FinishKey[]).every((finish) => tiles[finish])} shotRef={shotRef} />
       {layout ? (
         <group position={[-centerX, groundOffset, -midZ]}>
           {layout.placed.filter(({ piece }) => !lookInside || piece.kind === "tube" || piece === layout.body).map(({ piece, z }) => {
@@ -688,7 +703,7 @@ function Capture({ captureRef }: { captureRef: RefObject<(() => string | null) |
   return null;
 }
 
-export default function BespokeScene({ design, view, lookInside = false, captureRef, onContextLost }: { design: BespokeDesign; view: { key: PreviewView; nonce: number }; lookInside?: boolean; captureRef: RefObject<(() => string | null) | null>; onContextLost?: () => void }) {
+export default function BespokeScene({ design, view, lookInside = false, captureRef, onContextLost, shotRef }: { design: BespokeDesign; view: { key: PreviewView; nonce: number }; lookInside?: boolean; captureRef: RefObject<(() => string | null) | null>; onContextLost?: () => void; shotRef?: RefObject<ShotTaker | null> }) {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -710,7 +725,7 @@ export default function BespokeScene({ design, view, lookInside = false, capture
         gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.());
       }}
     >
-      <Workshop design={design} view={view} reduced={reduced} lookInside={lookInside} />
+      <Workshop design={design} view={view} reduced={reduced} lookInside={lookInside} shotRef={shotRef} />
       <Capture captureRef={captureRef} />
     </Canvas>
   );

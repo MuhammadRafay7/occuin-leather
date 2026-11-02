@@ -4,10 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/server/auth";
-import { listCategories } from "@/lib/server/catalog";
 import { db, schema } from "@/lib/server/db";
-import { AdminTitle, linkClass, Notice } from "../../_components/ui";
+import { AdminTitle, buttonClass, Notice, StatusDot } from "../../_components/ui";
 import { param, variantToInput, type SearchParams } from "../../_lib/format";
+import { listAllCategories, listMediaChoices } from "../../_lib/queries-catalog";
 import { ProductForm } from "../product-form";
 
 export const metadata: Metadata = { title: "Edit product" };
@@ -19,8 +19,9 @@ export default async function EditProduct({ params, searchParams }: { params: Pr
   if (!parsed.success) notFound();
   const [product] = await db.select().from(schema.products).where(eq(schema.products.id, parsed.data));
   if (!product) notFound();
-  const [categories, variants] = await Promise.all([
-    listCategories(),
+  const [categories, library, variants] = await Promise.all([
+    listAllCategories(),
+    listMediaChoices(),
     db.select().from(schema.variants).where(eq(schema.variants.productId, product.id)).orderBy(asc(schema.variants.sku)),
   ]);
   const created = param(await searchParams, "created") === "1";
@@ -28,15 +29,18 @@ export default async function EditProduct({ params, searchParams }: { params: Pr
   return (
     <>
       <AdminTitle
-        sub={product.active ? <Link href={`/product/${product.slug}`} className={linkClass}>View in store</Link> : "Inactive, hidden from the store"}
-        action={<Link href="/admin/products" className={`text-sm ${linkClass}`}>All products</Link>}
+        back={{ href: "/admin/products", label: "Products" }}
+        meta={<StatusDot tone={product.active ? "success" : "muted"}>{product.active ? "In the store" : "Hidden"}</StatusDot>}
+        sub={product.active ? "Make your changes, then save." : "Customers cannot see this product yet."}
+        action={product.active ? <Link href={`/product/${product.slug}`} target="_blank" className={buttonClass}>View in store</Link> : undefined}
       >
         {product.name}
       </AdminTitle>
-      {created ? <div className="mb-4"><Notice result={{ ok: true, message: "Product created." }} /></div> : null}
+      {created ? <div className="mb-3"><Notice result={{ ok: true, message: "Product created." }} /></div> : null}
       <ProductForm
         key={product.id}
         categories={categories}
+        library={library}
         initial={{
           id: product.id,
           name: product.name,

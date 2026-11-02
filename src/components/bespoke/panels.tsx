@@ -12,7 +12,8 @@ import { estimateDesign, visibleDesign } from "@/lib/bespoke/estimate";
 import { customerPdf, designSvg } from "@/lib/bespoke/export";
 import { bodyOf, groupBounds, isSolidPanel, outlineOf, pathLength } from "@/lib/bespoke/outline";
 import { designProblem } from "@/lib/bespoke/submission";
-import { BESPOKE_NOTE, money } from "@/lib/format";
+import { useStudioRates } from "@/components/studio/rates";
+import { bespokeNote, money } from "@/lib/format";
 import { FINISHES, METALS, THREADS, type FinishKey } from "@/lib/studio/spec";
 import { COUNTRIES } from "@/lib/validation";
 import { useCreator, useSelectedPiece, type AlignEdge } from "./store";
@@ -25,7 +26,8 @@ const TYPE_KEYS = Object.keys(PRODUCT_TYPES) as ProductType[];
 
 export function useEstimate() {
   const design = useCreator((state) => state.design);
-  return useMemo(() => estimateDesign(design), [design]);
+  const { pricing } = useStudioRates();
+  return useMemo(() => estimateDesign(design, pricing), [design, pricing]);
 }
 
 function SizeFields({ pieces }: { pieces: BespokePiece[] }) {
@@ -439,6 +441,7 @@ export function EstimateBar() {
 type Fields = { name?: string; email?: string; country?: string; phone?: string };
 
 export function SendPanel() {
+  const { delivery } = useStudioRates();
   const live = useCreator((state) => state.design);
   const hidden = live.pieces.filter((piece) => !piece.visible);
   const problem = useMemo(() => (live.pieces.length ? designProblem(live) : null), [live]);
@@ -499,7 +502,7 @@ export function SendPanel() {
           <input name="phone" type="tel" autoComplete="tel" maxLength={30} aria-invalid={Boolean(fields.phone)} className={FIELD} />
         </FormField>
       </Group>
-      <p className={`text-[12px] leading-snug ${SECONDARY}`}>{BESPOKE_NOTE}</p>
+      <p className={`text-[12px] leading-snug ${SECONDARY}`}>{bespokeNote(delivery)}</p>
       {hidden.length ? <p role="status" className="rounded-[14px] bg-fg/10 px-3 py-2 text-[13px]">{hidden.map((piece) => piece.name).join(", ")} {hidden.length === 1 ? "is" : "are"} hidden and will not be sent or priced.</p> : null}
       {problem ? <p role="alert" className="text-[13px] text-danger">{problem}</p> : null}
       {error ? <p role="alert" className="text-[13px] text-danger">{error}</p> : null}
@@ -513,6 +516,7 @@ export function SendPanel() {
 }
 
 export function Confirmation({ reference, link }: { reference: string; link: string }) {
+  const { delivery } = useStudioRates();
   const startOver = useCreator((state) => state.startOver);
   const steps = ["We review your design and check how it can be made.", "We email you a final price.", "Work starts after you accept it."];
   return (
@@ -534,7 +538,7 @@ export function Confirmation({ reference, link }: { reference: string; link: str
             ))}
           </ol>
         </div>
-        <p className={`text-[13px] leading-snug ${SECONDARY}`}>{BESPOKE_NOTE}</p>
+        <p className={`text-[13px] leading-snug ${SECONDARY}`}>{bespokeNote(delivery)}</p>
         <div className="flex flex-wrap gap-2">
           <Link href={link} className="flex min-h-11 items-center rounded-full border border-fg/20 px-5 text-[13px] font-medium hover:bg-fg/10">Follow your request</Link>
           <button type="button" onClick={startOver} className="flex min-h-11 items-center rounded-full bg-invert-bg px-5 text-[13px] font-medium text-invert-fg hover:opacity-90">Design another</button>
@@ -557,6 +561,7 @@ function download(name: string, type: string, data: BlobPart) {
 const fileBase = (name: string) => (name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "occuin-design");
 
 export function SavedPanel() {
+  const { pricing } = useStudioRates();
   const design = useCreator((state) => state.design);
   const savedId = useCreator((state) => state.savedId);
   const savedName = useCreator((state) => state.savedName);
@@ -630,7 +635,7 @@ export function SavedPanel() {
       <Group title="Download">
         <div className="grid grid-cols-2 gap-2">
           <button type="button" disabled={!hasContent} onClick={() => download(`${fileBase(design.name || name)}.svg`, "image/svg+xml", designSvg(design) ?? "")} className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-fg/20 text-[13px] font-medium hover:bg-fg/10 disabled:opacity-40"><DownloadSimple size={16} aria-hidden />SVG</button>
-          <button type="button" disabled={!hasContent} onClick={() => download(`${fileBase(design.name || name)}.pdf`, "application/pdf", customerPdf(design).slice().buffer as ArrayBuffer)} className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-fg/20 text-[13px] font-medium hover:bg-fg/10 disabled:opacity-40"><DownloadSimple size={16} aria-hidden />PDF</button>
+          <button type="button" disabled={!hasContent} onClick={() => download(`${fileBase(design.name || name)}.pdf`, "application/pdf", customerPdf(design, pricing).slice().buffer as ArrayBuffer)} className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-fg/20 text-[13px] font-medium hover:bg-fg/10 disabled:opacity-40"><DownloadSimple size={16} aria-hidden />PDF</button>
         </div>
       </Group>
       <Group title="Your designs">

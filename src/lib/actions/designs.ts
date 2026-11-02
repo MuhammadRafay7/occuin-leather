@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ensureOwnerKey, getOwnerKey, hitRateLimit } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/client-ip";
 import { db, schema } from "@/lib/server/db";
+import { getPricing } from "@/lib/server/content";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { designSpecSchema, type DesignSpec } from "@/lib/studio/spec";
 
@@ -56,7 +57,7 @@ export async function saveDesign(input: { id?: string | null; spec: unknown; pre
   if (preview.error) return { ok: false, error: "The preview image could not be read." };
 
   const spec = parsed.data;
-  const priceCents = quoteDesign(spec).totalCents;
+  const priceCents = quoteDesign(spec, await getPricing()).totalCents;
   const existingId = id.safeParse(input.id).data;
   if (!existingId && (await db.$count(designs, eq(designs.ownerKey, owner))) >= MAX_KEPT) return { ok: false, error: TOO_MANY_KEPT };
 
@@ -90,7 +91,11 @@ export async function listDesigns(): Promise<SavedDesign[]> {
     .where(eq(designs.ownerKey, owner))
     .orderBy(desc(designs.updatedAt))
     .limit(MAX_LISTED);
-  return rows.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() }));
+  const pricing = await getPricing();
+  return rows.map((row) => {
+    const spec = designSpecSchema.safeParse(row.spec);
+    return { ...row, priceCents: spec.success ? quoteDesign(spec.data, pricing).totalCents : row.priceCents, updatedAt: row.updatedAt.toISOString() };
+  });
 }
 
 export async function deleteDesign(designId: string) {

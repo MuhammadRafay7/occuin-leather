@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { presentBag } from "@/components/bag-drawer";
@@ -9,7 +10,7 @@ import { useFloatingClearance } from "@/components/glass/hooks";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
 import { Button } from "@/components/ui";
 import { SWATCH_FALLBACK, swatchHex } from "@/components/shop/swatches";
-import { addAndReadBag } from "@/components/product/bag-actions";
+import { addAndReadBag, addForBuyNow } from "@/components/product/bag-actions";
 import { money } from "@/lib/format";
 
 export type PurchaseOption = { id: string; color: string; size: string; priceCents: number; stock: number };
@@ -24,6 +25,7 @@ type Props = { slug: string; options: PurchaseOption[]; saveButton: ReactNode; d
 
 export function Purchase({ slug, options, saveButton, details }: Props) {
   const reduceMotion = useReducedMotion();
+  const router = useRouter();
   const colors = [...new Set(options.map((option) => option.color))];
   const [color, setColor] = useState(colors[0]);
   const shades = options.filter((option) => option.color === color);
@@ -48,13 +50,23 @@ export function Purchase({ slug, options, saveButton, details }: Props) {
     setError(null);
   }
 
+  function askForSize() {
+    setError("Choose a size first.");
+    sizeGroup.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    sizeGroup.current?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus({ preventScroll: true });
+  }
+
+  function buyNow() {
+    if (!chosen) return askForSize();
+    startAdding(async () => {
+      const result = await addForBuyNow(slug, chosen.id);
+      if (result.error) setError(result.error);
+      else router.push("/checkout");
+    });
+  }
+
   function add() {
-    if (!chosen) {
-      setError("Choose a size first.");
-      sizeGroup.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
-      sizeGroup.current?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus({ preventScroll: true });
-      return;
-    }
+    if (!chosen) return askForSize();
     startAdding(async () => {
       const result = await addAndReadBag(slug, { variantId: chosen.id });
       if ("bag" in result && result.bag) {
@@ -128,7 +140,8 @@ export function Purchase({ slug, options, saveButton, details }: Props) {
       </div>
 
       <div className="mt-auto flex items-center gap-2">
-        <div className="hidden flex-1 lg:block"><Button type="button" onClick={add} disabled={pending || soldOut} className="w-full">{label}</Button></div>
+        {soldOut ? null : <div className="hidden flex-1 lg:block"><Button type="button" onClick={buyNow} disabled={pending} className="w-full">Buy now</Button></div>}
+        <div className="hidden flex-1 lg:block"><Button type="button" look="outline" onClick={add} disabled={pending || soldOut} className="w-full">{label}</Button></div>
         <div className="text-[13px] text-fg/75 lg:hidden">Save for later</div>
         <div className="ml-auto lg:ml-0">{saveButton}</div>
       </div>
@@ -149,7 +162,10 @@ export function Purchase({ slug, options, saveButton, details }: Props) {
                 <p className="text-[15px]">{money(priceCents)}</p>
                 <p className={`truncate ${error ? "text-danger" : "text-fg/75"}`}>{error ?? (chosen ? `${color}, ${chosen.size}` : soldOut ? color : "Choose a size")}</p>
               </div>
-              <Button type="button" onClick={add} disabled={pending || soldOut} className="!h-11 shrink-0 !px-6 text-[13px]">{label}</Button>
+              <div className="flex shrink-0 gap-1.5">
+                <Button type="button" look="outline" onClick={add} disabled={pending || soldOut} className="!h-11 !px-3 text-[13px] min-[375px]:!px-4">{label}</Button>
+                {soldOut ? null : <Button type="button" onClick={buyNow} disabled={pending} className="!h-11 !px-3 text-[13px] min-[375px]:!px-4">Buy now</Button>}
+              </div>
             </motion.div>,
             document.body,
           )
