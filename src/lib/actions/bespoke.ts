@@ -1,7 +1,7 @@
 "use server";
 
 import { and, desc, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { designSchema, LIMITS, type BespokeDesign } from "@/lib/bespoke/design";
@@ -46,7 +46,7 @@ export async function acceptBespoke(access: Access) {
   const request = await locate(access);
   if (!request) return { error: "We could not find that quote." };
   const result = await acceptQuote(request.id);
-  revalidatePath("/", "layout");
+  refresh();
   return result;
 }
 
@@ -54,7 +54,7 @@ export async function bagAcceptedBespoke(access: Access) {
   const request = await locate(access);
   if (!request || !bespokeBuyable(request)) return { error: "This quote can no longer be bought." };
   await addBespoke(await ensureOwnerKey(), request.id);
-  revalidatePath("/", "layout");
+  refresh();
   return { ok: true };
 }
 
@@ -62,7 +62,7 @@ export async function bagBalance(access: Access) {
   const request = await locate(access);
   if (!request || !balanceBuyable(request)) return { error: "This balance can no longer be paid here." };
   await addBespoke(await ensureOwnerKey(), request.id, "balance");
-  revalidatePath("/", "layout");
+  refresh();
   return { ok: true };
 }
 
@@ -73,7 +73,7 @@ export async function askForChange(access: Access, text: string) {
   if (!request) return { error: "We could not find that quote." };
   if (await hitRateLimit(`bespoke-change:${request.id}`, 5, 3600)) return { error: "Too many messages. Try again in an hour." };
   const result = await requestChange(request.id, parsed.data);
-  revalidatePath("/", "layout");
+  refresh();
   return result;
 }
 
@@ -196,7 +196,7 @@ export async function markBalancePaid(requestId: string, note: string): Promise<
   const result = await recordBalancePaid(requestId, parsed.data);
   if ("error" in result) return adminResult(false, result.error ?? "That did not save. Try again.");
   await recordAudit(admin, { action: "bespoke.balance_paid", targetType: "bespoke", targetId: requestId, detail: parsed.data });
-  revalidatePath("/", "layout");
+  refresh();
   return adminResult(true, "Balance recorded as paid.");
 }
 

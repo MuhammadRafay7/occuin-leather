@@ -14,6 +14,7 @@ import { contentUsingMedia } from "@/lib/server/content";
 import { db, schema, type Transaction } from "@/lib/server/db";
 import { mediaInUse, mediaUsage } from "@/lib/server/media";
 import type { ActionResult } from "./admin";
+import { refreshStore } from "@/lib/server/store-cache";
 
 const { categories, mediaImages, orderItems, products, reviews, stockMovements, variants } = schema;
 
@@ -42,7 +43,6 @@ const ids = z.array(uuid).min(1, "Select at least one product.").max(MAX_BULK_PR
 
 const fail = (message: string, fieldErrors?: Record<string, string>): ActionResult => ({ ok: false, message, fieldErrors });
 const done = (message: string): ActionResult => ({ ok: true, message });
-const refreshStore = () => revalidatePath("/", "layout");
 
 class Refusal extends Error {}
 

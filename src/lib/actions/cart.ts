@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh } from "next/cache";
 import { z } from "zod";
 import { ensureOwnerKey, getOwnerKey, hitRateLimit } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/client-ip";
@@ -8,7 +8,6 @@ import { addDesign, addVariant, setPromo, setQuantity } from "@/lib/server/cart"
 import { cartTooFast as tooFast } from "@/lib/server/cart-rate";
 
 const id = z.uuid();
-const refresh = () => revalidatePath("/", "layout");
 const TOO_FAST = "Too many changes. Try again in a minute.";
 const TOO_MANY_CODES = "Too many attempts. Try again in a few minutes.";
 

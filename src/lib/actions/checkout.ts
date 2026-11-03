@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOwnerKey, hitRateLimit } from "@/lib/server/auth";
@@ -11,6 +10,7 @@ import { findOrderByRef, placeOrder, type CheckoutResult } from "@/lib/server/or
 import { SHIPPING_METHODS, type ShippingMethod } from "@/lib/format";
 import { fieldErrors, textValues, type FormState } from "@/lib/form-state";
 import { addressInput, addressSchema, emailField, phoneField } from "@/lib/validation";
+import { refreshStore } from "@/lib/server/store-cache";
 
 const TOO_MANY = "Too many attempts. Try again in a few minutes.";
 const NOT_FOUND = "We could not find an order with those details.";
@@ -78,7 +78,7 @@ export async function submitCheckout(_: FormState, data: FormData): Promise<Form
     return { error: result.error };
   }
 
-  revalidatePath("/", "layout");
+  refreshStore();
   redirect(result.redirectUrl);
 }
 

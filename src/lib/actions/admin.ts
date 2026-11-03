@@ -12,6 +12,7 @@ import { requireAdmin } from "@/lib/server/auth";
 import { applyAdminUpdate, sendQuoteEmail } from "@/lib/server/bespoke";
 import { db, schema } from "@/lib/server/db";
 import { moveOrder } from "@/lib/server/orders";
+import { refreshStore } from "@/lib/server/store-cache";
 
 const { categories, contactMessages, mediaImages, orders, products, promoCodes, stockMovements, variants } = schema;
 
@@ -39,7 +40,6 @@ const uuid = z.uuid();
 
 const fail = (message: string, fieldErrors?: Record<string, string>): ActionResult => ({ ok: false, message, fieldErrors });
 const done = (message: string): ActionResult => ({ ok: true, message });
-const refreshStore = () => revalidatePath("/", "layout");
 const refreshAdmin = () => revalidatePath("/admin", "layout");
 
 function invalid(error: z.ZodError): ActionResult {

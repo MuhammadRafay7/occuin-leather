@@ -1,6 +1,5 @@
 import { eq, sql } from "drizzle-orm";
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import { cache } from "react";
 import { z } from "zod";
 import { whatsappChatUrl } from "../bespoke/whatsapp";
@@ -32,6 +31,7 @@ import { COLORS, FINISHES, type ColorKey } from "../studio/spec";
 import { COUNTRIES } from "../validation";
 import { listProducts } from "./catalog";
 import { db, schema } from "./db";
+import { storeCached } from "./store-cache";
 import { storedImageSize } from "./media";
 import { contactDetails, getSettings, paymentModeOf, type PaymentMode } from "./settings";
 
@@ -294,9 +294,11 @@ function missingTable(error: unknown) {
   return code === UNDEFINED_TABLE;
 }
 
+const contentRows = storeCached("site-content", () => db.select({ key: siteContent.key, value: siteContent.value }).from(siteContent));
+
 const storedContent = cache(async () => {
   try {
-    const rows = await db.select({ key: siteContent.key, value: siteContent.value }).from(siteContent);
+    const rows = await contentRows();
     return new Map(rows.map((row) => [row.key, row.value]));
   } catch (error) {
     if (!missingTable(error)) throw error;
@@ -405,6 +407,5 @@ export const seoContext = cache(async (): Promise<SeoContext> => {
 });
 
 export async function pageMetadata(path: string, imageUrl?: string): Promise<Metadata> {
-  await connection();
   return pageMeta(path, await seoContext(), imageUrl);
 }

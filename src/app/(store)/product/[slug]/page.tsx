@@ -1,4 +1,3 @@
-import { connection } from "next/server";
 import { seoContext, getDelivery, getPricing } from "@/lib/server/content";
 import { join } from "node:path";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
@@ -14,21 +13,22 @@ import { Purchase } from "@/components/product/purchase";
 import { Quality } from "@/components/product/quality";
 import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { Reviews } from "@/components/product/reviews";
-import { SaveButton } from "@/components/product/save-button";
+import { ProductSaveButton } from "@/components/product/product-save-button";
 import { Scale } from "@/components/product/scale";
 import { swatchHex } from "@/components/shop/swatches";
 import { arrivalTime, deliveryEstimate, freeShippingNote, makingTime, money, shippingLabel } from "@/lib/format";
 import { contactDetails, getSettings, paymentModeOf } from "@/lib/server/settings";
 import { breadcrumbData, jsonLd, productData, productMeta } from "@/lib/seo";
-import { getOwnerKey } from "@/lib/server/auth";
 import { storedImageSize } from "@/lib/server/media";
-import { DEPARTMENTS, getProduct, getReviews, getWishlist, listProducts, listRelated } from "@/lib/server/catalog";
+import { DEPARTMENTS, getProduct, getReviews, listProducts, listRelated } from "@/lib/server/catalog";
 import { categoryPath } from "@/lib/server/shop";
 import { compareSizes } from "@/lib/shop-params";
 import { carryNotes, comparisons, FIT_BASIS, presetMatches } from "@/lib/scale";
 import { COLORS, FINISHES, METALS, normalizeSpec, THREADS, type DesignSpec } from "@/lib/studio/spec";
 
 type Props = { params: Promise<{ slug: string }> };
+
+export const generateStaticParams = async () => (await listProducts()).map((card) => ({ slug: card.slug }));
 
 const CARE = "Wipe with a soft dry cloth. Keep away from heat and direct sun, and condition twice a year. Do not soak or machine wash.";
 const HANDLE_COUNT = ["", "Top handle", "Two top handles"];
@@ -61,7 +61,6 @@ function includedItems(spec: DesignSpec | null) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = await getProduct((await params).slug);
-  await connection();
   return product ? productMeta(product, await seoContext()) : {};
 }
 
@@ -70,9 +69,8 @@ export default async function ProductPage({ params }: Props) {
   if (!product) notFound();
 
   const delivery = await getDelivery();
-  const [related, wishlist, reviews, department, rates, pricing, contact] = await Promise.all([
+  const [related, reviews, department, rates, pricing, contact] = await Promise.all([
     listRelated(product.id, product.categorySlug),
-    getOwnerKey().then(getWishlist),
     getReviews(product.id),
     listProducts({ department: product.department }),
     getSettings(),
@@ -108,7 +106,6 @@ export default async function ProductPage({ params }: Props) {
     `${shippingLabel("express", delivery)}, ${money(rates.expressShippingCents)}.`,
     `With making time, it reaches you ${arrivalTime("standard", delivery)} after you order, or ${arrivalTime("express", delivery)} by express.`,
   ];
-  const saved = wishlist.some((item) => item.id === product.id);
   const shownIds = new Set([product.id, ...related.map((card) => card.id)]);
   const more = [...related, ...department.filter((card) => !shownIds.has(card.id))].slice(0, 6);
 
@@ -143,7 +140,7 @@ export default async function ProductPage({ params }: Props) {
             <Purchase
               slug={product.slug}
               options={options.map(({ id, color, size, priceCents, stock }) => ({ id, color, size, priceCents, stock }))}
-              saveButton={<SaveButton productId={product.id} productName={product.name} saved={saved} />}
+              saveButton={<ProductSaveButton productId={product.id} productName={product.name} />}
               details={
                 <dl className="grid gap-1.5 border-t border-fg/10 pt-3 text-[13px]">
                   {specRows.map(([label, value]) => (

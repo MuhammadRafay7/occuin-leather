@@ -1,7 +1,7 @@
 "use server";
 
 import { and, asc, eq, ne, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
@@ -76,7 +76,7 @@ export async function updateProfile(_: FormState, data: FormData): Promise<FormS
       }).catch(() => false),
     );
   }
-  revalidatePath("/", "layout");
+  refresh();
   return { notice: "Your details are saved." };
 }
 
@@ -112,7 +112,7 @@ export async function deleteAccount(_: FormState, data: FormData): Promise<FormS
   after(() =>
     sendMail({ to: user.email, subject: "Your OCCUIN account was deleted", text: "Your OCCUIN account has been deleted. If this was not you, contact us straight away." }).catch(() => false),
   );
-  revalidatePath("/", "layout");
+  refresh();
   redirect("/");
 }
 

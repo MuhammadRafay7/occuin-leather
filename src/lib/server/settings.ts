@@ -3,6 +3,7 @@ import { cache } from "react";
 import { z } from "zod";
 import { BRAND, FREE_SHIPPING_CENTS, ORDERS_PAUSED_FALLBACK, SHIPPING_METHODS } from "../format";
 import { db, schema } from "./db";
+import { storeCached } from "./store-cache";
 import { whatsappNumber } from "./whatsapp";
 
 const STORE_KEY = "store";
@@ -35,9 +36,13 @@ export const settingsSchema = z.object({
 
 export type StoreSettings = z.infer<typeof settingsSchema>;
 
-export const getSettings = cache(async (): Promise<StoreSettings> => {
+const storedSettings = storeCached("site-settings", async () => {
   const [row] = await db.select({ value: schema.siteSettings.value }).from(schema.siteSettings).where(eq(schema.siteSettings.key, STORE_KEY));
-  const parsed = settingsSchema.safeParse(row?.value ?? {});
+  return row?.value ?? {};
+});
+
+export const getSettings = cache(async (): Promise<StoreSettings> => {
+  const parsed = settingsSchema.safeParse(await storedSettings());
   return parsed.success ? parsed.data : settingsSchema.parse({});
 });
 

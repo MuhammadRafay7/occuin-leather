@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { openBag } from "@/components/bag-drawer";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
+import { useVisitor } from "@/components/visitor";
 import { readLocal, writeLocal } from "@/lib/local-store";
 
 const LAST_VISIT = "occuin-last-visit";
@@ -35,8 +36,9 @@ function isReturningVisit() {
   return returningVisit;
 }
 
-export function BagReminder({ count }: { count: number }) {
+export function BagReminder() {
   const pathname = usePathname();
+  const { count } = useVisitor();
   const reduceMotion = useReducedMotion();
   const [visible, setVisible] = useState(false);
   const [top, setTop] = useState<number | undefined>(undefined);

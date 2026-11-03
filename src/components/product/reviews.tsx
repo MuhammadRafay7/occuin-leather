@@ -1,23 +1,9 @@
 import { Star } from "@phosphor-icons/react/dist/ssr";
-import { and, eq } from "drizzle-orm";
-import Link from "next/link";
 import { BRAND, longDate } from "@/lib/format";
-import { getUser } from "@/lib/server/auth";
 import { getReviews } from "@/lib/server/catalog";
-import { db, schema } from "@/lib/server/db";
-import { hasPurchased } from "@/lib/server/orders";
-import { ReviewForm } from "./review-form";
+import { ReviewGate } from "./review-gate";
 
 const STARS = [1, 2, 3, 4, 5];
-
-async function hasReviewed(userId: string, productId: string) {
-  const { reviews } = schema;
-  const rows = await db
-    .select({ id: reviews.id })
-    .from(reviews)
-    .where(and(eq(reviews.userId, userId), eq(reviews.productId, productId)));
-  return rows.length > 0;
-}
 
 function Stars({ value }: { value: number }) {
   return (
@@ -30,9 +16,7 @@ function Stars({ value }: { value: number }) {
 }
 
 export async function Reviews({ productId, slug }: { productId: string; slug: string }) {
-  const [{ average, total, items }, user] = await Promise.all([getReviews(productId), getUser()]);
-  const canPost = user ? await hasPurchased(user.id, productId) : false;
-  const hasReview = user && canPost ? await hasReviewed(user.id, productId) : false;
+  const { average, total, items } = await getReviews(productId);
 
   return (
     <section aria-labelledby="reviews" className="mt-14 grid gap-6 border-t border-line pt-8 md:grid-cols-[1fr_2fr] md:gap-10">
@@ -68,15 +52,7 @@ export async function Reviews({ productId, slug }: { productId: string; slug: st
           </ul>
         ) : null}
 
-        {canPost ? (
-          <ReviewForm productId={productId} hasReview={hasReview} />
-        ) : user ? (
-          <p className="text-[13px] text-muted">Only customers who bought this piece can review it.</p>
-        ) : (
-          <p className="text-[13px] text-muted">
-            <Link href={`/login?next=${encodeURIComponent(`/product/${slug}`)}`} className="text-fg underline underline-offset-4 hover:opacity-60">Sign in</Link> to review a piece you bought.
-          </p>
-        )}
+        <ReviewGate productId={productId} slug={slug} />
       </div>
     </section>
   );

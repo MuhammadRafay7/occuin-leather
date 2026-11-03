@@ -1,7 +1,7 @@
 "use server";
 
 import { and, eq, gt, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
@@ -50,7 +50,7 @@ const findUserByEmail = async (email: string) => {
 async function enterSession(userId: string, destination: string): Promise<never> {
   await startSession(userId);
   await adoptGuestData(userId);
-  revalidatePath("/", "layout");
+  refresh();
   redirect(destination);
 }
 
@@ -158,12 +158,12 @@ export async function resetPassword(_: FormState, data: FormData): Promise<FormS
 
 export async function signOut() {
   await endSession();
-  revalidatePath("/", "layout");
+  refresh();
   redirect("/");
 }
 
 export async function signOutAdmin() {
   await endSession();
-  revalidatePath("/", "layout");
+  refresh();
   redirect(ADMIN_LOGIN);
 }

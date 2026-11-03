@@ -3,6 +3,7 @@ import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-or
 import { cache } from "react";
 import { studioModelOf } from "../studio/model-of";
 import { db, schema } from "./db";
+import { storeCached } from "./store-cache";
 
 const { categories, products, reviews, users, variants, wishlistItems } = schema;
 
@@ -44,7 +45,7 @@ export type ProductFilters = {
   sort?: "new" | "price-asc" | "price-desc";
 };
 
-const loadCards = cache(async (): Promise<ProductCard[]> => {
+const storedCards = storeCached("product-cards", async (): Promise<ProductCard[]> => {
   const rows = await db
     .select({ product: products, categoryName: categories.name, department: categories.department })
     .from(products)
@@ -75,6 +76,8 @@ const loadCards = cache(async (): Promise<ProductCard[]> => {
   });
 });
 
+const loadCards = cache(async (): Promise<ProductCard[]> => (await storedCards()).map((card) => ({ ...card, createdAt: new Date(card.createdAt) })));
+
 export async function listProducts(filters: ProductFilters = {}) {
   const needle = filters.q?.trim().toLowerCase();
   const cards = (await loadCards()).filter(
@@ -103,8 +106,10 @@ export async function listFacets(department?: Department) {
   };
 }
 
+const storedCategories = storeCached("categories", () => db.select().from(categories).orderBy(asc(categories.position)));
+
 export const listCategories = cache(async (department?: Department) => {
-  const [rows, cards] = await Promise.all([db.select().from(categories).orderBy(asc(categories.position)), listProducts({ department })]);
+  const [rows, cards] = await Promise.all([storedCategories(), listProducts({ department })]);
   return rows.filter((row) => cards.some((card) => card.category === row.slug));
 });
 

@@ -41,10 +41,13 @@ async function findRedirect(request: NextRequest, event: NextFetchEvent) {
   return table.rules.get(request.nextUrl.pathname) ?? null;
 }
 
-function contentSecurityPolicy(nonce: string) {
+const PRIVATE_PATHS = /^\/(account|bag|checkout|login|register|reset|orders|unsubscribe|wishlist|bespoke)(\/|$)/;
+
+function contentSecurityPolicy(nonce: string | null) {
+  const scripts = nonce ? `'nonce-${nonce}' 'strict-dynamic'` : "'unsafe-inline'";
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' ${scripts}${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -71,9 +74,11 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
   const { pathname, search } = request.nextUrl;
   const adminPath = isAdminPath(pathname);
-  const policy = contentSecurityPolicy(crypto.randomUUID().replaceAll("-", ""));
+  const strict = adminPath || PRIVATE_PATHS.test(pathname);
+  const policy = contentSecurityPolicy(strict ? crypto.randomUUID().replaceAll("-", "") : null);
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("Content-Security-Policy", policy);
+  if (strict) requestHeaders.set("Content-Security-Policy", policy);
+  else requestHeaders.delete("Content-Security-Policy");
   requestHeaders.delete(ADMIN_PATH_HEADER);
   if (adminPath) requestHeaders.set(ADMIN_PATH_HEADER, `${pathname}${search}`);
   const response = NextResponse.next({ request: { headers: requestHeaders } });

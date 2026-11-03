@@ -1,7 +1,6 @@
 "use server";
 
 import { and, inArray } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { bumpRedirectEpoch } from "@/lib/redirects";
 import { recordAudit } from "@/lib/server/audit";
@@ -10,6 +9,7 @@ import { ownsStudioModel } from "@/lib/server/catalog";
 import { CONTENT, clearContent, getContent, isContentKey, writeContent, type ContentKey } from "@/lib/server/content";
 import { db, schema } from "@/lib/server/db";
 import type { ActionResult } from "./admin";
+import { refreshStore as refreshCachedStore } from "@/lib/server/store-cache";
 
 const fail = (message: string, fieldErrors?: Record<string, string>): ActionResult => ({ ok: false, message, fieldErrors });
 
@@ -36,7 +36,7 @@ async function homeProblems(value: unknown) {
 
 function refreshStore(key: ContentKey) {
   if (key === "redirects") bumpRedirectEpoch();
-  revalidatePath("/", "layout");
+  refreshCachedStore();
 }
 
 export async function saveContent(key: string, value: unknown): Promise<ActionResult> {

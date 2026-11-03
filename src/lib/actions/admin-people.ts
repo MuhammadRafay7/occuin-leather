@@ -14,6 +14,7 @@ import { mailConfigured, sendMail } from "@/lib/server/mail";
 import { issueReset } from "@/lib/server/password-reset";
 import { contactDetails, getSettings, PAYMENT_MODES, saveSettings, settingsSchema, type StoreSettings } from "@/lib/server/settings";
 import type { ActionResult } from "./admin";
+import { refreshStore } from "@/lib/server/store-cache";
 
 const { adminAuditLog, contactMessages, newsletterSubscribers, passwordResets, sessions, users } = schema;
 
@@ -173,7 +174,7 @@ export async function deleteCustomer(userId: string, confirmEmail: string, passw
     if (mailConfigured()) {
       after(() => sendMail({ to: user.email, subject: "Your OCCUIN account was deleted", text: "Your OCCUIN account has been deleted by our team. If you did not expect this, reply to this email or contact us." }).catch(() => false));
     }
-    revalidatePath("/", "layout");
+    refreshStore();
     return done("Customer deleted.");
   });
   if (result.ok) redirect("/admin/customers?deleted=1");
@@ -368,7 +369,7 @@ export async function saveStoreSettings(input: SettingsInput): Promise<ActionRes
     await saveSettings(parsed.data);
     const detail = changes(before, parsed.data);
     if (detail) await recordAudit(actor, { action: "settings.update", targetType: "settings", targetId: "store", detail });
-    revalidatePath("/", "layout");
+    refreshStore();
     return done(detail ? "Settings saved. The store has them now." : "Nothing changed.");
   });
 }

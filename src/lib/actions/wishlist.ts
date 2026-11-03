@@ -24,6 +24,6 @@ export async function toggleWishlist(productId: string) {
   if (!removed.length) {
     await db.insert(wishlistItems).values({ ownerKey, productId: product.id }).onConflictDoNothing();
   }
-  revalidatePath("/", "layout");
+  revalidatePath("/wishlist");
   return { saved: !removed.length };
 }

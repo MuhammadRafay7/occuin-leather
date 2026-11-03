@@ -13,6 +13,7 @@ import { useScrollLock } from "@/components/glass/hooks";
 import { LineImage } from "@/components/line-image";
 import { readBag, type BagView } from "@/components/product/bag-actions";
 import { buttonClass } from "@/components/ui";
+import { setVisitorCount, useVisitor } from "@/components/visitor";
 import { readBagExtras, updateBagLine, type BagExtras } from "@/lib/actions/bag";
 import { bagDeliveryDates } from "@/lib/delivery-dates";
 import { money, type Delivery } from "@/lib/format";
@@ -27,9 +28,7 @@ const MAX_QUANTITY = 10;
 const LIVE_PATHS = ["/bag", "/checkout"];
 const listeners = new Set<(view: Presented) => void>();
 const openers = new Set<() => void>();
-const counters = new Set<(count: number) => void>();
-
-export const syncBagCount = (count: number) => counters.forEach((listener) => listener(count));
+export const syncBagCount = (count: number) => setVisitorCount(count);
 
 export const presentBag = (view: Presented) => {
   syncBagCount(view.bag.count);
@@ -119,9 +118,9 @@ function BagLine({ line, added, busy, onChange }: { line: Line; added: boolean; 
   );
 }
 
-type Props = { server: { count: number }; freeShippingCents: number; delivery: Delivery; payment: PaymentInfo };
+type Props = { freeShippingCents: number; delivery: Delivery; payment: PaymentInfo };
 
-export function BagDrawer({ server, freeShippingCents, delivery, payment }: Props) {
+export function BagDrawer({ freeShippingCents, delivery, payment }: Props) {
   const reduceMotion = useReducedMotion();
   const transition = reduceMotion ? INSTANT : SHEET_SPRING;
   const router = useRouter();
@@ -137,14 +136,8 @@ export function BagDrawer({ server, freeShippingCents, delivery, payment }: Prop
   const [busyLine, setBusyLine] = useState<string | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
   const [, startUpdate] = useTransition();
-  const [liveCount, setLiveCount] = useState(server.count);
-  const [rendered, setRendered] = useState(server);
+  const { count: liveCount } = useVisitor();
   const [bump, setBump] = useState(0);
-
-  if (server !== rendered) {
-    setRendered(server);
-    setLiveCount(server.count);
-  }
 
   const offscreen = () => (panel.current?.offsetWidth ?? 0) + EDGE_GAP;
 
@@ -175,7 +168,7 @@ export function BagDrawer({ server, freeShippingCents, delivery, payment }: Prop
     show();
     readBag().then((bag) => {
       setView({ bag, addedId: null });
-      setLiveCount(bag.count);
+      setVisitorCount(bag.count);
     });
     loadExtras();
   }
@@ -199,14 +192,11 @@ export function BagDrawer({ server, freeShippingCents, delivery, payment }: Prop
       handlers.current.refreshPage();
     };
     const opener = () => handlers.current.openFresh();
-    const counter = (next: number) => setLiveCount(next);
     listeners.add(listener);
     openers.add(opener);
-    counters.add(counter);
     return () => {
       listeners.delete(listener);
       openers.delete(opener);
-      counters.delete(counter);
     };
   }, []);
 
@@ -234,7 +224,7 @@ export function BagDrawer({ server, freeShippingCents, delivery, payment }: Prop
         return;
       }
       setView({ bag: result.bag, addedId: null });
-      setLiveCount(result.bag.count);
+      setVisitorCount(result.bag.count);
       loadExtras();
       refreshPage();
     });

@@ -7,13 +7,15 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createPortal } from "react-dom";
 import { useFocusTrap, useScrollLock } from "@/components/glass/hooks";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
+import { useVisitor } from "@/components/visitor";
 
 type NavItem = { href: string; label: string };
-type Props = { links: NavItem[]; moreLinks: NavItem[]; signedIn: boolean; isAdmin: boolean };
+type Props = { links: NavItem[]; moreLinks: NavItem[] };
 
 const subscribe = () => () => undefined;
 
-export function HeaderMenu({ links, moreLinks, signedIn, isAdmin }: Props) {
+export function HeaderMenu({ links, moreLinks }: Props) {
+  const { signedIn, isAdmin } = useVisitor();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const [shownPath, setShownPath] = useState(pathname);

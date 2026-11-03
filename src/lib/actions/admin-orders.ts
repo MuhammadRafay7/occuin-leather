@@ -11,6 +11,7 @@ import { requireAdmin } from "@/lib/server/auth";
 import { db, schema } from "@/lib/server/db";
 import { emailRefund, getOrder, markPaid, refundOrder, resendConfirmation } from "@/lib/server/orders";
 import type { ActionResult } from "./admin";
+import { refreshStore } from "@/lib/server/store-cache";
 
 const { adminAuditLog, carts, orders, promoCodes } = schema;
 
@@ -20,7 +21,6 @@ export type PromoEditInput = { code: string; percentOff: string; minSubtotal: st
 const uuid = z.uuid();
 const fail = (message: string, fieldErrors?: Record<string, string>): ActionResult => ({ ok: false, message, fieldErrors });
 const done = (message: string): ActionResult => ({ ok: true, message });
-const refreshStore = () => revalidatePath("/", "layout");
 const refreshAdmin = () => revalidatePath("/admin", "layout");
 
 function invalid(error: z.ZodError): ActionResult {

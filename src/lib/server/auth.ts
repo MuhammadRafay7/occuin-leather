@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { ADMIN_PATH_HEADER, adminLoginPath } from "@/lib/safe-next";
+import { VISITOR_HINT } from "@/lib/visitor-hint";
 import { db, schema } from "./db";
 
 const SESSION_COOKIE = "orsel_session";
@@ -30,6 +31,7 @@ export async function startSession(userId: string) {
     await tx.insert(schema.sessions).values({ tokenHash: tokenHash(token), userId, expiresAt });
   });
   jar.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", secure, path: "/", expires: expiresAt });
+  jar.set(VISITOR_HINT, randomBytes(6).toString("base64url"), { sameSite: "lax", secure, path: "/", expires: expiresAt });
 }
 
 export async function endSession() {
@@ -37,6 +39,7 @@ export async function endSession() {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (token) await db.delete(schema.sessions).where(eq(schema.sessions.tokenHash, tokenHash(token)));
   jar.delete(SESSION_COOKIE);
+  jar.delete(VISITOR_HINT);
 }
 
 export const getUser = cache(async () => {
