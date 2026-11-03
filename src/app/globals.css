@@ -12,6 +12,7 @@
 }
 
 @custom-variant short (@media (orientation: landscape) and (max-height: 520px));
+@custom-variant phone (@media (width < 48rem) and ((orientation: portrait) or (height > 520px)));
 
 @utility px-page {
   padding-left: max(1rem, env(safe-area-inset-left));
@@ -218,5 +219,94 @@ textarea {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+.shape-rail {
+  scrollbar-width: none;
+  scroll-padding-inline: max(1rem, env(safe-area-inset-left));
+
+  @media (width >= 48rem) {
+    scroll-padding-inline: max(2rem, env(safe-area-inset-left));
+  }
+}
+
+.shape-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.making-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 1.25rem;
+  top: 2.5rem;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  transform-origin: top;
+  --draw-from: 1 0;
+
+  @media (width >= 48rem) {
+    --draw-from: 0 1;
+    left: 2.5rem;
+    right: -1.5rem;
+    top: 1.25rem;
+    bottom: auto;
+    width: auto;
+    height: 1px;
+    transform-origin: left;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .shape-card {
+      @media (width < 48rem) {
+        animation: shape-focus linear both;
+        animation-timeline: view(inline);
+      }
+    }
+
+    .making-step:not(:last-child)::before {
+      animation: making-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 40% cover 50%;
+    }
+  }
+}
+
+@keyframes shape-focus {
+  0% {
+    opacity: 0.55;
+    scale: 0.92;
+  }
+  35%,
+  65% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0.55;
+    scale: 0.92;
+  }
+}
+
+@keyframes making-draw {
+  from {
+    scale: var(--draw-from);
+  }
+  to {
+    scale: 1 1;
+  }
+}
+
+.story-caption {
+  animation: story-caption 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes story-caption {
+  from {
+    opacity: 0;
+    translate: 0 8px;
   }
 }

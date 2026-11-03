@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { seoContext, getDelivery } from "@/lib/server/content";
+import { seoContext, getDelivery, getPricing } from "@/lib/server/content";
 import { join } from "node:path";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
@@ -9,19 +9,24 @@ import type { ReactNode } from "react";
 import sharp from "sharp";
 import { ProductCard } from "@/components/product-card";
 import { Gallery } from "@/components/product/gallery";
+import { Making } from "@/components/product/making";
 import { Purchase } from "@/components/product/purchase";
 import { Quality } from "@/components/product/quality";
+import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { Reviews } from "@/components/product/reviews";
 import { SaveButton } from "@/components/product/save-button";
-import { deliveryEstimate, freeShippingNote, makingNote, money, shippingLabel } from "@/lib/format";
-import { getSettings } from "@/lib/server/settings";
+import { Scale } from "@/components/product/scale";
+import { swatchHex } from "@/components/shop/swatches";
+import { arrivalTime, deliveryEstimate, freeShippingNote, makingTime, money, shippingLabel } from "@/lib/format";
+import { contactDetails, getSettings, paymentModeOf } from "@/lib/server/settings";
 import { breadcrumbData, jsonLd, productData, productMeta } from "@/lib/seo";
 import { getOwnerKey } from "@/lib/server/auth";
 import { storedImageSize } from "@/lib/server/media";
 import { DEPARTMENTS, getProduct, getReviews, getWishlist, listProducts, listRelated } from "@/lib/server/catalog";
 import { categoryPath } from "@/lib/server/shop";
 import { compareSizes } from "@/lib/shop-params";
-import { COLORS, METALS, THREADS, type DesignSpec } from "@/lib/studio/spec";
+import { carryNotes, comparisons, FIT_BASIS, presetMatches } from "@/lib/scale";
+import { COLORS, FINISHES, METALS, normalizeSpec, THREADS, type DesignSpec } from "@/lib/studio/spec";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -65,12 +70,14 @@ export default async function ProductPage({ params }: Props) {
   if (!product) notFound();
 
   const delivery = await getDelivery();
-  const [related, wishlist, reviews, department, rates] = await Promise.all([
+  const [related, wishlist, reviews, department, rates, pricing, contact] = await Promise.all([
     listRelated(product.id, product.categorySlug),
     getOwnerKey().then(getWishlist),
     getReviews(product.id),
     listProducts({ department: product.department }),
     getSettings(),
+    getPricing(),
+    contactDetails(),
   ]);
   const gallery = await Promise.all(
     product.images.map(async (src, index) => ({
@@ -84,6 +91,23 @@ export default async function ProductPage({ params }: Props) {
     ? `${product.studioPreset.form.width} × ${product.studioPreset.form.height} × ${product.studioPreset.form.depth} mm`
     : null;
   const included = includedItems(product.studioPreset);
+  const preset = product.studioPreset ? normalizeSpec(product.studioPreset) : null;
+  const colours = [...new Set(options.map((option) => option.color))];
+  const model = preset && presetMatches(preset, colours) ? { spec: preset, slug: product.slug, name: product.name, initialsPrice: money(pricing.foilMonogramCents) } : null;
+  const specRows: [string, ReactNode][] = [
+    ["Material", product.composition.split(".")[0]!],
+    ...(dimensions ? [["Size", <a key="size" href="#size" className="underline decoration-fg/30 underline-offset-4 hover:decoration-fg">{dimensions}</a>] as [string, ReactNode]] : []),
+    ...(included.length ? [["Carry", included.join(", ")] as [string, ReactNode]] : []),
+    ...(product.studioPreset
+      ? ([["Hardware", METALS[product.studioPreset.hardware.metal].name], ["Stitching", THREADS[product.studioPreset.stitch.thread].name], ["Lining", COLORS[product.studioPreset.liningColor].name]] as [string, ReactNode][])
+      : []),
+  ];
+  const payment = paymentModeOf(rates) === "stripe" ? "card" : contact.whatsapp ? "whatsapp" : "email";
+  const shipping = [
+    `${shippingLabel("standard", delivery)}, ${money(rates.standardShippingCents)}, ${freeShippingNote(rates)}.`,
+    `${shippingLabel("express", delivery)}, ${money(rates.expressShippingCents)}.`,
+    `With making time, it reaches you ${arrivalTime("standard", delivery)} after you order, or ${arrivalTime("express", delivery)} by express.`,
+  ];
   const saved = wishlist.some((item) => item.id === product.id);
   const shownIds = new Set([product.id, ...related.map((card) => card.id)]);
   const more = [...related, ...department.filter((card) => !shownIds.has(card.id))].slice(0, 6);
@@ -103,7 +127,7 @@ export default async function ProductPage({ params }: Props) {
       <section className="overflow-hidden bg-[radial-gradient(90%_90%_at_38%_46%,#3b5a50_0%,#20403a_46%,#0f211d_100%)] pt-[72px] lg:flex lg:min-h-[100dvh] lg:items-center lg:px-6 lg:pb-5 lg:pt-[84px]">
         <div className="mx-auto grid w-full max-w-[1400px] gap-3 lg:h-[min(calc(100dvh-104px),740px)] lg:min-h-[600px] lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-5">
           <div className="min-w-0">
-            <Gallery images={gallery} />
+            <Gallery images={gallery} model={model} />
           </div>
 
         <div className="glass relative z-10 mx-2 mb-2 flex flex-col rounded-[32px] p-5 lg:m-0 lg:p-7">
@@ -122,7 +146,7 @@ export default async function ProductPage({ params }: Props) {
               saveButton={<SaveButton productId={product.id} productName={product.name} saved={saved} />}
               details={
                 <dl className="grid gap-1.5 border-t border-fg/10 pt-3 text-[13px]">
-                  {[["Material", product.composition.split(".")[0]!], ...(dimensions ? [["Size", dimensions]] : []), ...(included.length ? [["Carry", included.join(", ")]] : []), ...(product.studioPreset ? [["Hardware", METALS[product.studioPreset.hardware.metal].name], ["Stitching", THREADS[product.studioPreset.stitch.thread].name], ["Lining", COLORS[product.studioPreset.liningColor].name]] : [])].map(([label, value]) => (
+                  {specRows.map(([label, value]) => (
                     <div key={label} className="grid grid-cols-[72px_1fr] gap-2">
                       <dt className="text-fg/70">{label}</dt>
                       <dd>{value}</dd>
@@ -150,18 +174,39 @@ export default async function ProductPage({ params }: Props) {
         </div>
       </section>
 
-      <div className="px-page mx-auto mt-10 grid max-w-[1280px] gap-7 md:mt-12 md:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+      <div className="px-page mx-auto max-w-[1280px]">
+        {preset ? (
+          <Scale
+            bag={{
+              name: product.name,
+              width: preset.form.width,
+              height: preset.form.height,
+              depth: preset.form.depth,
+              taper: preset.form.taper,
+              cornerBottom: preset.form.cornerBottom,
+              cornerTop: preset.form.cornerTop,
+              handles: preset.carry.handles,
+              handleDrop: preset.carry.handleDrop,
+              handleWidth: preset.carry.handleWidth,
+              flap: preset.closure.type === "flap" ? preset.closure.flapLength : 0,
+              colour: swatchHex(colours[0] ?? ""),
+            }}
+            items={comparisons(preset.form)}
+            carry={carryNotes(preset)}
+            leather={model ? { finish: FINISHES[preset.panels.primary.finish].name, note: FINISHES[preset.panels.primary.finish].note, colour: COLORS[preset.panels.primary.color].name, hex: COLORS[preset.panels.primary.color].hex } : null}
+            basis={FIT_BASIS}
+          />
+        ) : null}
+        <Making payment={payment} makingTime={makingTime(delivery)} shipping={shipping} />
+      </div>
+
+      <div className="px-page mx-auto mt-10 grid max-w-[1280px] gap-7 md:mt-12 md:grid-cols-3 lg:gap-8">
         <Column title="Details">
           <span className="block">{product.composition}</span>
           {dimensions ? <span className="mt-1 block">{dimensions}</span> : null}
           {included.map((item) => (
             <span key={item} className="mt-1 block">{item}</span>
           ))}
-        </Column>
-        <Column title="Making and delivery">
-          <span className="block">{makingNote(delivery)}</span>
-          <span className="mt-2 block">{shippingLabel("standard", delivery)}: {deliveryEstimate("standard", delivery).toLowerCase()}, {money(rates.standardShippingCents)}, {freeShippingNote(rates)}.</span>
-          <span className="mt-1 block">{shippingLabel("express", delivery)}: {deliveryEstimate("express", delivery).toLowerCase()}, {money(rates.expressShippingCents)}.</span>
         </Column>
         <Column title="Care">
           {CARE}{" "}
@@ -187,6 +232,7 @@ export default async function ProductPage({ params }: Props) {
             </div>
           </section>
         ) : null}
+        <RecentlyViewed current={{ slug: product.slug, name: product.name, image: product.images[0]! }} />
       </div>
     </div>
   );

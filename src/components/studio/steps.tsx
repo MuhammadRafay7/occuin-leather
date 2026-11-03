@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { money } from "@/lib/format";
+import { initialsPlacement } from "@/lib/studio/initials";
 import { quoteDesign } from "@/lib/studio/pricing";
 import { COLORS, FINISHES, METALS, PATTERNS, THREADS, type ColorKey, type DesignSpec, type FinishKey, type Hide } from "@/lib/studio/spec";
 import { useStudioRates } from "./rates";
@@ -772,8 +773,8 @@ function MonogramSection({ spec, issues }: { spec: Spec; issues: Issues }) {
           placeholder="Up to four letters"
           aria-invalid={Boolean(issues.get("monogram.text"))}
           onChange={(event) => {
-            const firstLetters = !monogram.text && closure.type === "flap" && monogram.placement === "center";
-            edit.monogram({ text: event.target.value, ...(firstLetters ? { placement: "flap" as const } : {}) }, "monogram.text");
+            const placement = monogram.text ? monogram.placement : initialsPlacement(spec);
+            edit.monogram({ text: event.target.value, ...(placement !== monogram.placement ? { placement } : {}) }, "monogram.text");
           }}
           className={`h-12 w-full rounded-full border border-fg/15 bg-bg/70 px-5 text-[16px] tracking-[0.12em] text-fg uppercase placeholder:normal-case placeholder:tracking-normal placeholder:text-fg/75 focus:border-invert-bg focus:outline-none ${monogram.text ? "font-display" : ""}`}
         />
@@ -818,6 +819,7 @@ function MonogramSection({ spec, issues }: { spec: Spec; issues: Issues }) {
           )}
           {!allOver && closure.type !== "flap" ? <p className={`text-[13px] leading-snug ${SECONDARY}`}>Add a flap under Details to place initials on it.</p> : null}
           {!allOver && closure.type === "flap" && monogram.placement === "center" ? <p className={`text-[13px] leading-snug ${SECONDARY}`}>The flap may cover the centre. Lift it to read your initials.</p> : null}
+          {!allOver && closure.type !== "flap" && spec.pocket !== "none" && monogram.placement === "center" ? <p className={`text-[13px] leading-snug ${SECONDARY}`}>The front pocket crosses the centre. Corner keeps your initials clear of it.</p> : null}
           <Issue message={issues.get("monogram.placement")} />
         </>
       ) : (

@@ -4,6 +4,9 @@ import type { ReactNode } from "react";
 import { Footer } from "@/components/footer";
 import { GlassEffects } from "@/components/glass-effects";
 import { Header } from "@/components/header";
+import { ViewedTracker } from "@/components/recently-viewed";
+import { QuickViewHost } from "@/components/shop/quick-view";
+import { WhatsAppAsk } from "@/components/whatsapp-ask";
 import { BRAND } from "@/lib/format";
 import { absoluteUrl } from "@/lib/seo";
 import { getContent, seoImage } from "@/lib/server/content";
@@ -29,6 +32,9 @@ export default function StoreLayout({ children }: { children: ReactNode }) {
       <Header />
       <main id="main">{children}</main>
       <Footer />
+      <WhatsAppAsk />
+      <QuickViewHost />
+      <ViewedTracker />
     </>
   );
 }

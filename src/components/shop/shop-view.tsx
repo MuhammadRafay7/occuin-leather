@@ -1,5 +1,7 @@
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
+import { Suspense } from "react";
+import { RecentlyViewed } from "@/components/recently-viewed";
 import {
   listCategories,
   listProducts,
@@ -17,6 +19,7 @@ import {
 import { listCustomisable } from "./customisable";
 import { FilterLinks } from "./filter-links";
 import { GlassCard } from "./glass-card";
+import { RememberShop } from "./remember-shop";
 import { arrangeCards } from "./rhythm";
 import { ScrollRail } from "./scroll-rail";
 import { ShopDock } from "./shop-dock";
@@ -141,7 +144,13 @@ export async function ShopView({ path, title, params, department, category }: Pr
             <CreateYourOwn />
           </div>
         ) : null}
+
+        <RecentlyViewed />
       </div>
+
+      <Suspense fallback={null}>
+        <RememberShop path={path} />
+      </Suspense>
 
       <ShopDock path={path} state={state} colors={colors} sizes={sizes} resultCount={results.length} />
       <noscript>

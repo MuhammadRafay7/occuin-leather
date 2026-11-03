@@ -1,9 +1,12 @@
 import { publicName } from "../format";
-import { and, asc, avg, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { cache } from "react";
+import { studioModelOf } from "../studio/model-of";
 import { db, schema } from "./db";
 
 const { categories, products, reviews, users, variants, wishlistItems } = schema;
+
+export const ownsStudioModel = sql`(${products.studioPreset} ->> 'name') = ${products.name}`;
 
 export type Department = "women" | "men" | "leather";
 export const DEPARTMENTS: Record<Department, { name: string; image: string }> = {
@@ -114,7 +117,7 @@ export const getProduct = cache(async (slug: string) => {
   if (!row) return null;
   const options = await db.select().from(variants).where(eq(variants.productId, row.product.id)).orderBy(asc(variants.sku));
   const department = row.department === "leather" || row.product.audiences.includes(row.department) ? row.department : "leather";
-  return { ...row.product, categoryName: row.categoryName, department: department as Department, variants: options };
+  return { ...row.product, studioPreset: studioModelOf(row.product), categoryName: row.categoryName, department: department as Department, variants: options };
 });
 
 export async function listRelated(productId: string, category: string, limit = 4) {

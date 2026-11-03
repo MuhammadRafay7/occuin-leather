@@ -25,6 +25,7 @@ import { arrivalTime, BRAND, DEFAULT_DELIVERY, freeShippingNote, makingNote, mak
 import { IMAGE_PATH } from "../media";
 import { isRedirectDestination, isRedirectSource, redirectProblem } from "../redirects";
 import { pageMeta, type SeoContext } from "../seo";
+import { STORY_STEPS, type StoryStep } from "../home/story";
 import { PRESETS } from "../studio/presets";
 import { DEFAULT_PRICING, type StudioPricing } from "../studio/pricing";
 import { COLORS, FINISHES, type ColorKey } from "../studio/spec";
@@ -110,11 +111,16 @@ const contactSchema = z.strictObject({ title: text(120), whatsappLine: richOptio
 const presetKeys = Object.keys(PRESETS) as [PresetKey, ...PresetKey[]];
 const colorKeys = Object.keys(COLORS) as [ColorKey, ...ColorKey[]];
 
+const storyStep = z.strictObject({ title: text(40), body: rich(240) });
+
 const homeSchema = z.strictObject({
   hero: z.strictObject({
     lineOne: text(16),
     lineTwo: text(16),
     ctaLabel: text(24),
+    secondaryLabel: text(24).default(DEFAULT_HOME.hero.secondaryLabel),
+    secondaryHref: href.default(DEFAULT_HOME.hero.secondaryHref),
+    cueLabel: text(30).default(DEFAULT_HOME.hero.cueLabel),
     forms: z.array(z.strictObject({ key: z.enum(presetKeys, "Please pick a style."), label: text(14), slug: text(120) })).min(1, "Keep at least one style.").max(5, "There is room for 5 styles.")
       .superRefine((forms, context) => uniqueBy(forms, context, "key", "This style is already in the list.")),
     leathers: z.array(z.enum(colorKeys, "Please pick a leather.")).min(1, "Keep at least one leather.").max(7, "There is room for 7 leathers."),
@@ -131,6 +137,32 @@ const homeSchema = z.strictObject({
   featured: z.strictObject({ visible: z.boolean(), heading: text(60), linkLabel: text(30), linkHref: href, limit: z.number("Please enter a number.").int("Please use a whole number.").min(1, "Please show at least 1.").max(8, "There is room for 8.") }),
   studio: z.strictObject({ visible: z.boolean(), heading: text(80), body: rich(500), ctaLabel: text(40), ctaHref: href, image, imageAlt: text(200) }),
   about: z.strictObject({ visible: z.boolean(), heading: text(120), body: rich(1500) }),
+  story: z.strictObject({
+    visible: z.boolean(),
+    preset: z.enum(presetKeys, "Please pick a style."),
+    slug: text(120),
+    eyebrow: text(40),
+    heading: text(80),
+    intro: rich(300),
+    steps: z.strictObject(Object.fromEntries(STORY_STEPS.map((step) => [step, storyStep])) as Record<StoryStep, typeof storyStep>),
+    endHeading: text(60),
+    endBody: rich(300),
+    ctaLabel: text(30),
+    productLabel: text(30),
+  }).default(DEFAULT_HOME.story),
+  shapes: z.strictObject({ visible: z.boolean(), heading: text(60), body: rich(200), linkLabel: text(30), linkHref: href }).default(DEFAULT_HOME.shapes),
+  leathers: z.strictObject({ visible: z.boolean(), eyebrow: text(40), heading: text(60), body: rich(200), ctaLabel: text(30) }).default(DEFAULT_HOME.leathers),
+  making: z.strictObject({
+    visible: z.boolean(),
+    heading: text(80),
+    steps: z.array(z.strictObject({ title: text(40), body: rich(300) })).min(1, "Keep at least one step.").max(6, "There is room for 6 steps."),
+  }).default(DEFAULT_HOME.making),
+  paths: z.strictObject({
+    visible: z.boolean(),
+    heading: text(80),
+    links: z.array(z.strictObject({ label: text(30), href, note: optional(80) })).min(1, "Keep at least one link.").max(6, "There is room for 6 links.")
+      .superRefine((links, context) => uniqueBy(links, context, "href", "This link is already in the list.")),
+  }).default(DEFAULT_HOME.paths),
 });
 
 const navSchema = z.strictObject({

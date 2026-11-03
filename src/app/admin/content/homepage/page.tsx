@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { isNotNull } from "drizzle-orm";
 import { requireAdmin } from "@/lib/server/auth";
+import { ownsStudioModel } from "@/lib/server/catalog";
 import { CONTENT, getContent } from "@/lib/server/content";
 import { db, schema } from "@/lib/server/db";
 import { PRESETS } from "@/lib/studio/presets";
@@ -16,7 +16,7 @@ export default async function ContentHomepage() {
   const [home, media, studioProducts] = await Promise.all([
     getContent("home"),
     listMediaChoices(),
-    db.select({ slug: schema.products.slug, name: schema.products.name }).from(schema.products).where(isNotNull(schema.products.studioPreset)).orderBy(schema.products.name),
+    db.select({ slug: schema.products.slug, name: schema.products.name }).from(schema.products).where(ownsStudioModel).orderBy(schema.products.name),
   ]);
   const presets = Object.keys(PRESETS).map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }));
   const leathers = Object.entries(COLORS).map(([value, color]) => ({ value, label: color.name }));

@@ -1,8 +1,8 @@
 "use client";
 
-import { ContactShadows, OrbitControls } from "@react-three/drei";
+import { ContactShadows, MeshReflectorMaterial, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import * as THREE from "three";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { buildBag, disposeBag, flapFrame, surfaceFrame, UNIT_PER_MM, type BagGeometry } from "@/lib/studio/geometry";
@@ -34,6 +34,10 @@ const SHORT_CANVAS_PX = 420;
 const CONTROL_STRIP_PX = 52;
 const HERO_ANGLES = { theta: -0.5, phi: 1.32 };
 const REVEAL_ANGLES = { theta: -0.3, phi: 0.78 };
+const SHOWCASE_ANGLES = { theta: -0.62, phi: 1.2 };
+const SHOWCASE_SPIN = 0.5;
+const SHOWCASE_ENV = 0.55;
+const FADE_MS = 1400;
 const ENV_ROTATION = 0.6;
 const ENV_INTENSITY = 0.8;
 const EXPOSURE = 1;
@@ -126,7 +130,7 @@ function useBagAssets(spec: DesignSpec, quality: Quality, reveal: boolean) {
   });
 
   const { form, carry, closure, stitch, hardware, panels, surface, pocket, monogram, edgeColor } = spec;
-  const shapeKey = JSON.stringify([form, carry, closure, stitch, hardware.feet, pocket, panels.layout, panels.divide, reveal, quality.detail]);
+  const shapeKey = JSON.stringify([form, carry, closure, stitch.length, stitch.rows, hardware.feet, pocket, panels.layout, panels.divide, reveal, quality.detail]);
   const paintKey = JSON.stringify([
     form, closure.type, closure.flapLength, closure.flapShape, stitch.rows, panels.layout, panels.divide, surface, monogram,
     monogram.technique === "paint" ? edgeColor : null, colorDependentPaint(spec), quality.paint, fontEpoch,
@@ -216,7 +220,7 @@ function addSoftbox(texture: THREE.DataTexture, rotation: number) {
   texture.needsUpdate = true;
 }
 
-function useEnvironment(url: string) {
+function useEnvironment(url: string, intensity: number) {
   const scene = useThree((state) => state.scene);
   const invalidate = useThree((state) => state.invalidate);
   const [environment, setEnvironment] = useState<{ texture: THREE.DataTexture | null } | null>(null);
@@ -233,7 +237,7 @@ function useEnvironment(url: string) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         scene.environment = texture;
         scene.environmentRotation.set(0, ENV_ROTATION, 0);
-        scene.environmentIntensity = ENV_INTENSITY;
+        scene.environmentIntensity = intensity;
         setEnvironment({ texture });
         invalidate();
       },
@@ -245,7 +249,7 @@ function useEnvironment(url: string) {
     return () => {
       live = false;
     };
-  }, [url, scene, invalidate]);
+  }, [url, scene, invalidate, intensity]);
   useEffect(() => {
     const texture = environment?.texture;
     if (!texture) return;
@@ -278,13 +282,51 @@ function useMaterials() {
 
 type Materials = ReturnType<typeof useMaterials>;
 
-function useDressedMaterials(materials: Materials, spec: DesignSpec, surfaces: Surfaces | null, tiles: Tiles) {
+type Fade = (colors: THREE.Color[], apply: () => void) => void;
+
+function useColorFade(enabled: boolean): Fade {
+  const invalidate = useThree((state) => state.invalidate);
+  const tween = useRef<{ colors: THREE.Color[]; from: THREE.Color[]; to: THREE.Color[]; start: number } | null>(null);
+  const primed = useRef(false);
+  const allowed = useRef(enabled);
+  useLayoutEffect(() => {
+    allowed.current = enabled;
+  });
+  useFrame(() => {
+    const current = tween.current;
+    if (!current) return;
+    const progress = Math.min(1, (performance.now() - current.start) / FADE_MS);
+    const eased = progress * progress * (3 - 2 * progress);
+    current.colors.forEach((color, index) => color.lerpColors(current.from[index]!, current.to[index]!, eased));
+    if (progress >= 1) tween.current = null;
+    else invalidate();
+  });
+  return useCallback<Fade>((colors, apply) => {
+    const from = colors.map((color) => color.clone());
+    apply();
+    if (!allowed.current || !primed.current) {
+      primed.current = true;
+      tween.current = null;
+      return;
+    }
+    const to = colors.map((color) => color.clone());
+    if (to.every((color, index) => color.equals(from[index]!))) return;
+    colors.forEach((color, index) => color.copy(from[index]!));
+    tween.current = { colors, from, to, start: performance.now() };
+    invalidate();
+  }, [invalidate]);
+}
+
+function useDressedMaterials(materials: Materials, spec: DesignSpec, surfaces: Surfaces | null, tiles: Tiles, fade: Fade) {
   const invalidate = useThree((state) => state.invalidate);
   const { primary, accent, gusset } = spec.panels;
   const metal = spec.hardware.metal;
   const edge: Hide = useMemo(() => ({ finish: "box", color: spec.edgeColor }), [spec.edgeColor]);
   const lining: Hide = useMemo(() => ({ finish: "suede", color: spec.liningColor }), [spec.liningColor]);
   useLayoutEffect(() => {
+    const leathers = [materials.front, materials.back, materials.gusset, materials.flap, materials.straps, materials.edges, materials.lining];
+    const tints = leathers.flatMap((material) => [material.leather.uTintA.value, material.leather.uTintB.value]);
+    fade([...tints, materials.hardware.color], () => {
     if (surfaces) {
       dressLeather(materials.front, primary, accent, surfaces.front.surface, surfaces.front.pxPerMm, tiles);
       dressLeather(materials.back, primary, accent, surfaces.back.surface, surfaces.back.pxPerMm, tiles);
@@ -296,11 +338,12 @@ function useDressedMaterials(materials: Materials, spec: DesignSpec, surfaces: S
     dressLeather(materials.lining, lining, lining, null, 1, tiles);
     materials.hardware.color.set(METALS[metal].hex);
     materials.hardware.roughness = METALS[metal].roughness;
+    });
     invalidate();
-  }, [materials, primary, accent, gusset, edge, lining, metal, surfaces, tiles, invalidate]);
+  }, [materials, primary, accent, gusset, edge, lining, metal, surfaces, tiles, invalidate, fade]);
 }
 
-function Stitches({ bag, spec }: { bag: BagGeometry; spec: DesignSpec }) {
+function Stitches({ bag, spec, fade }: { bag: BagGeometry; spec: DesignSpec; fade: Fade }) {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const count = bag.stitches.length;
   const invalidate = useThree((state) => state.invalidate);
@@ -309,9 +352,9 @@ function Stitches({ bag, spec }: { bag: BagGeometry; spec: DesignSpec }) {
   const span = bag.stitchSpan;
 
   useLayoutEffect(() => {
-    material.color.set(thread);
+    fade([material.color], () => material.color.set(thread));
     invalidate();
-  }, [material, thread, invalidate]);
+  }, [material, thread, invalidate, fade]);
 
   useEffect(() => () => material.dispose(), [material]);
 
@@ -343,7 +386,7 @@ function Stitches({ bag, spec }: { bag: BagGeometry; spec: DesignSpec }) {
   );
 }
 
-function Bag({ bag, materials, spec }: { bag: BagGeometry; materials: Materials; spec: DesignSpec }) {
+function Bag({ bag, materials, spec, fade }: { bag: BagGeometry; materials: Materials; spec: DesignSpec; fade: Fade }) {
   return (
     <group>
       <mesh geometry={bag.front} material={materials.front} castShadow receiveShadow />
@@ -355,25 +398,25 @@ function Bag({ bag, materials, spec }: { bag: BagGeometry; materials: Materials;
       {bag.leatherStraps ? <mesh geometry={bag.leatherStraps} material={materials.straps} castShadow receiveShadow /> : null}
       {bag.hardware ? <mesh geometry={bag.hardware} material={materials.hardware} castShadow /> : null}
       {bag.zipTape ? <mesh geometry={bag.zipTape} material={materials.zip} receiveShadow /> : null}
-      <Stitches bag={bag} spec={spec} />
+      <Stitches bag={bag} spec={spec} fade={fade} />
     </group>
   );
 }
 
-function fitDistance(radius: number, aspect: number) {
+function fitDistance(radius: number, aspect: number, framing = FRAMING) {
   const vertical = radius / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-  return (vertical * FRAMING) / Math.min(aspect, 1);
+  return (vertical * framing) / Math.min(aspect, 1);
 }
 
 type Pose = { radius: number; theta: number; phi: number; target: THREE.Vector3 };
 
-function CameraRig({ bag, controls, reduced, reveal }: { bag: BagGeometry; controls: RefObject<OrbitHandle | null>; reduced: boolean; reveal: boolean }) {
+function CameraRig({ bag, controls, reduced, reveal, controlStrip, framing, opening }: { bag: BagGeometry; controls: RefObject<OrbitHandle | null>; reduced: boolean; reveal: boolean; controlStrip: boolean; framing?: number; opening?: { theta: number; phi: number } }) {
   const camera = useThree((state) => state.camera);
   const width = useThree((state) => state.size.width);
   const height = useThree((state) => Math.max(state.size.height, 1));
   const invalidate = useThree((state) => state.invalidate);
   const aspect = width / height;
-  const strip = height < SHORT_CANVAS_PX ? CONTROL_STRIP_PX : 0;
+  const strip = controlStrip && height < SHORT_CANVAS_PX ? CONTROL_STRIP_PX : 0;
   const clearance = height / Math.max(height - strip, 1);
   const goal = useRef<Pose | null>(null);
   const placed = useRef(false);
@@ -402,7 +445,7 @@ function CameraRig({ bag, controls, reduced, reveal }: { bag: BagGeometry; contr
     const pose = currentPose();
     if (!pose) return;
     const next: Pose = {
-      radius: fitDistance(bag.radius, aspect) * clearance,
+      radius: fitDistance(bag.radius, aspect, framing) * clearance,
       theta: angles?.theta ?? pose.theta,
       phi: angles?.phi ?? pose.phi,
       target: new THREE.Vector3(0, bag.centerY, 0),
@@ -422,8 +465,8 @@ function CameraRig({ bag, controls, reduced, reveal }: { bag: BagGeometry; contr
   });
 
   useLayoutEffect(() => {
-    aimRef.current(placed.current ? undefined : VIEW_ANGLES[useStudio.getState().view.name]);
-  }, [bag.radius, bag.centerY, aspect, clearance]);
+    aimRef.current(placed.current ? undefined : (opening ?? VIEW_ANGLES[useStudio.getState().view.name]));
+  }, [bag.radius, bag.centerY, aspect, clearance, framing, opening]);
 
   const wasRevealed = useRef(false);
   useEffect(() => {
@@ -961,7 +1004,91 @@ function exposeStoreInDevelopment() {
   (window as unknown as { __occuinStudio?: typeof useStudio }).__occuinStudio = useStudio;
 }
 
-function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, shotRef }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void; shotRef?: RefObject<ShotTaker | null> }) {
+export type Showcase = "plinth" | "lights";
+
+const SHOWCASE_LIGHTS = [
+  { offset: new THREE.Vector3(-1.5, 1.3, 1.1), color: "#ffd6a8", intensity: 1.9 },
+  { offset: new THREE.Vector3(1.6, 1.1, -1.7), color: "#a9c9ff", intensity: 3.2 },
+  { offset: new THREE.Vector3(-1.7, 0.5, -1.4), color: "#cfe2ff", intensity: 1.6 },
+];
+
+function fadeOut(size: number, inner: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext("2d")!;
+  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "#fff");
+  gradient.addColorStop(inner, "#fff");
+  gradient.addColorStop(1, "#000");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
+function ShowcaseStage({ bag, kind, phone }: { bag: BagGeometry; kind: Showcase; phone: boolean }) {
+  const lights = useRef<(THREE.DirectionalLight | null)[]>([]);
+  const target = useMemo(() => new THREE.Object3D(), []);
+  const aim = useMemo(() => new THREE.Vector3(), []);
+  const alpha = useMemo(() => fadeOut(256, 0.86), []);
+  useEffect(() => () => alpha.dispose(), [alpha]);
+  const groundY = bag.groundY;
+  const reach = bag.radius * 0.8;
+  const depth = reach * 0.07;
+
+  useFrame(({ camera }) => {
+    target.position.set(0, bag.centerY, 0);
+    target.updateMatrixWorld();
+    SHOWCASE_LIGHTS.forEach((light, index) => {
+      const node = lights.current[index];
+      if (!node) return;
+      aim.copy(light.offset).multiplyScalar(bag.radius * 2).applyQuaternion(camera.quaternion);
+      node.position.copy(target.position).add(aim);
+    });
+  });
+
+  return (
+    <>
+      <primitive object={target} />
+      {SHOWCASE_LIGHTS.map((light, index) => (
+        <directionalLight key={index} ref={(node) => { lights.current[index] = node; }} color={light.color} intensity={light.intensity} target={target} />
+      ))}
+      {kind === "plinth" ? (
+        <>
+      <mesh rotation-x={-Math.PI / 2} position={[0, groundY + 0.0004, 0]} renderOrder={-1}>
+        <circleGeometry args={[reach, 96]} />
+        <MeshReflectorMaterial
+          resolution={phone ? 256 : 512}
+          blur={[320, 90]}
+          mixBlur={1}
+          mixStrength={3.2}
+          mirror={0.75}
+          depthScale={0}
+          color="#2c4a42"
+          roughness={0.9}
+          metalness={0.2}
+          transparent
+          opacity={0.92}
+          alphaMap={alpha}
+          depthWrite={false}
+        />
+      </mesh>
+          <mesh position={[0, groundY - depth / 2, 0]} receiveShadow>
+            <cylinderGeometry args={[reach, reach * 0.97, depth, 96, 1, true]} />
+            <meshPhysicalMaterial color="#e3efe9" roughness={0.18} clearcoat={1} transparent opacity={0.22} side={THREE.DoubleSide} depthWrite={false} />
+          </mesh>
+          <mesh rotation-x={-Math.PI / 2} position={[0, groundY + 0.0008, 0]}>
+            <ringGeometry args={[reach * 0.985, reach, 96]} />
+            <meshBasicMaterial color="#f4efe6" transparent opacity={0.5} depthWrite={false} />
+          </mesh>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, shotRef, showcase, fade, framing }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade: boolean; framing?: number }) {
   const [forced, setForced] = useState<DesignSpec | null>(null);
   const active = forced ?? spec;
   const section = useStudio((state) => state.section);
@@ -975,9 +1102,10 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
     return max;
   }, [gl]);
   const { tiles, loaded } = useGrainTiles(active, tier.suffix, anisotropy, spin);
-  const environment = useEnvironment(quality.hdri);
+  const environment = useEnvironment(quality.hdri, showcase ? SHOWCASE_ENV : ENV_INTENSITY);
   const materials = useMaterials();
-  useDressedMaterials(materials, active, surfaces, tiles);
+  const fadeColors = useColorFade(fade && !reduced);
+  useDressedMaterials(materials, active, surfaces, tiles, fadeColors);
   const controls = useRef<OrbitHandle>(null);
   const autoRotate = useStudio((state) => state.autoRotate);
   const footprint = Math.max(active.form.width, active.form.depth) * UNIT_PER_MM;
@@ -1024,13 +1152,14 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
         maxDistance={bag ? fitDistance(bag.radius, 1) * 2.2 : 60}
         maxPolarAngle={Math.PI * 0.62}
         autoRotate={(autoRotate || spin) && !reduced && !paused}
-        autoRotateSpeed={spin ? 1.1 : 0.7}
+        autoRotateSpeed={spin ? (showcase ? SHOWCASE_SPIN : 1.1) : 0.7}
       />
-      {bag ? <CameraRig bag={bag} controls={controls} reduced={reduced} reveal={reveal} /> : null}
-      {bag ? <Bag bag={bag} materials={materials} spec={active} /> : null}
+      {bag ? <CameraRig bag={bag} controls={controls} reduced={reduced} reveal={reveal} controlStrip={!spin} framing={framing} opening={showcase ? SHOWCASE_ANGLES : undefined} /> : null}
+      {bag ? <Bag bag={bag} materials={materials} spec={active} fade={fadeColors} /> : null}
+      {liveLights && bag && showcase ? <ShowcaseStage bag={bag} kind={showcase} phone={quality.dpr[1] < 1.5} /> : null}
       {liveLights && bag ? (
         <>
-          <ContactShadows key={`wide-${generation}`} frames={2} position={[0, groundY + 0.002, 0]} scale={Math.max(footprint * 3.4, 2)} far={Math.max(rise * 1.1, 0.6)} resolution={1024} blur={3.2} opacity={0.5} color="#1a130c" />
+          {showcase === "plinth" ? null : <ContactShadows key={`wide-${generation}`} frames={2} position={[0, groundY + 0.002, 0]} scale={Math.max(footprint * 3.4, 2)} far={Math.max(rise * 1.1, 0.6)} resolution={1024} blur={3.2} opacity={0.5} color="#1a130c" />}
           <ContactShadows key={`tight-${generation}`} frames={2} position={[0, groundY + 0.004, 0]} scale={Math.max(footprint * 2.2, 1.5)} far={Math.max(rise * 0.12, 0.08)} resolution={1024} blur={1.2} opacity={0.72} color="#120c07" />
         </>
       ) : null}
@@ -1042,7 +1171,7 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
   );
 }
 
-export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, shotRef }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; shotRef?: RefObject<ShotTaker | null> }) {
+export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, shotRef, showcase, fade = false, framing }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade?: boolean; framing?: number }) {
   const [reduced, setReduced] = useState(false);
   const [quality] = useState(() => (still ? STILL_QUALITY : lite ? liteQuality() : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
@@ -1067,10 +1196,12 @@ export default function Scene({ spec, interactive = true, spin = false, lite = f
       aria-label="Live three dimensional preview of your design"
       onCreated={({ gl }) => {
         gl.shadowMap.autoUpdate = false;
-        gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.());
+        gl.domElement.addEventListener("webglcontextlost", () => {
+          if (gl.domElement.isConnected) onContextLost?.();
+        });
       }}
     >
-      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} shotRef={shotRef} />
+      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} shotRef={shotRef} showcase={showcase} fade={fade} framing={framing} />
     </Canvas>
   );
 }

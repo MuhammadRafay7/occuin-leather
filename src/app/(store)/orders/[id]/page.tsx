@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import { BagCountSync } from "@/components/bag/bag-page-extras";
+import { getOwnerKey } from "@/lib/server/auth";
+import { getCart } from "@/lib/server/cart";
 import { canViewOrder } from "@/lib/server/order-access";
 import { expireUnpaidOrders, getOrder } from "@/lib/server/orders";
 import { contactDetails, getSettings } from "@/lib/server/settings";
@@ -28,9 +31,12 @@ export default async function OrderPage({ params, searchParams }: Props) {
   if (!(await canViewOrder(order, token))) notFound();
   const [delivery, contact, { autoCancelDays }] = await Promise.all([getDelivery(), contactDetails(), getSettings()]);
   const awaitingWhatsApp = order.paymentMethod === "whatsapp" && order.status === "pending";
+  const placed = query.placed === "1";
+  const bagCount = placed ? (await getCart(await getOwnerKey())).count : null;
 
   return (
     <div className="mx-auto max-w-[1080px] px-page pb-24 pt-header">
+      {bagCount === null ? null : <BagCountSync count={bagCount} />}
       {awaitingWhatsApp ? (
         <WhatsAppStep
           reference={orderRef(order.number)}

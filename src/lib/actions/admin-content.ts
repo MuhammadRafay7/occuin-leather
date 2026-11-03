@@ -1,11 +1,12 @@
 "use server";
 
-import { and, inArray, isNotNull } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import { bumpRedirectEpoch } from "@/lib/redirects";
 import { recordAudit } from "@/lib/server/audit";
 import { requireAdmin } from "@/lib/server/auth";
+import { ownsStudioModel } from "@/lib/server/catalog";
 import { CONTENT, clearContent, getContent, isContentKey, writeContent, type ContentKey } from "@/lib/server/content";
 import { db, schema } from "@/lib/server/db";
 import type { ActionResult } from "./admin";
@@ -24,7 +25,7 @@ async function homeProblems(value: unknown) {
   const rows = await db
     .select({ slug: schema.products.slug })
     .from(schema.products)
-    .where(and(inArray(schema.products.slug, slugs), isNotNull(schema.products.studioPreset)));
+    .where(and(inArray(schema.products.slug, slugs), ownsStudioModel));
   const known = new Set(rows.map((row) => row.slug));
   const fields: Record<string, string> = {};
   slugs.forEach((slug, index) => {

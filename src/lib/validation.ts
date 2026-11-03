@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { needsPostalCode, PHONE_PATTERN, phoneDigits, phoneHasCountryCode, POSTAL_PATTERN, STATE_REQUIRED } from "./address-rules";
 
 export const COUNTRIES = [
   { code: "US", name: "United States" },
@@ -33,7 +34,6 @@ export const COUNTRIES = [
 ] as const;
 
 const COUNTRY_CODES = COUNTRIES.map((country) => country.code) as [string, ...string[]];
-const STATE_REQUIRED = new Set(["US", "CA", "AU"]);
 
 export const emailField = z
   .string()
@@ -42,15 +42,15 @@ export const emailField = z
   .max(254, "Enter a valid email.")
   .pipe(z.email("Enter a valid email."));
 
-export const phoneDigits = (phone: string) => phone.replace(/\D/g, "").replace(/^00/, "");
+export { phoneDigits };
 
 export const phoneField = z
   .string("Enter your phone number.")
   .trim()
   .min(1, "Enter your phone number.")
   .max(30, "Enter a valid phone number.")
-  .regex(/^\+?[\d\s()-]+$/, "Enter a valid phone number.")
-  .refine((value) => /^[1-9]\d{6,14}$/.test(phoneDigits(value)), "Include your country code, such as +92 300 1234567.");
+  .regex(PHONE_PATTERN, "Enter a valid phone number.")
+  .refine(phoneHasCountryCode, "Include your country code, such as +92 300 1234567.");
 
 export const newPasswordField = z
   .string()
@@ -74,13 +74,13 @@ export const addressSchema = z
     line2: optional(160),
     city: required("city", 100),
     state: optional(80),
-    postalCode: z
-      .string()
-      .trim()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9 -]{1,10}[A-Za-z0-9]$/, "Enter a valid postal code."),
+    postalCode: z.string().trim().refine((value) => !value || POSTAL_PATTERN.test(value), "Enter a valid postal code."),
     country: z.enum(COUNTRY_CODES, "Choose a country."),
   })
   .superRefine((address, context) => {
+    if (!address.postalCode && needsPostalCode(address.country)) {
+      context.addIssue({ code: "custom", path: ["postalCode"], message: "Enter a valid postal code." });
+    }
     if (STATE_REQUIRED.has(address.country) && !address.state) {
       context.addIssue({ code: "custom", path: ["state"], message: "Enter your state or province." });
     }

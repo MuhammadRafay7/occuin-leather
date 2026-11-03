@@ -3,25 +3,43 @@ import Image from "next/image";
 import Link from "next/link";
 import { ProductCard } from "@/components/product-card";
 import { Hero } from "@/components/home/hero";
+import { Leathers } from "@/components/home/leathers";
+import { Making } from "@/components/home/making";
+import { Paths } from "@/components/home/paths";
+import { Shapes, type Shape } from "@/components/home/shapes";
+import { Story } from "@/components/home/story";
 import { LinkButton } from "@/components/ui";
 import { Inline } from "@/components/content-blocks";
 import { jsonLd, organizationData, websiteData } from "@/lib/seo";
-import { getAllTokens, getContent, getPricing, pageMetadata } from "@/lib/server/content";
+import { getAllTokens, getContent, getDelivery, getPricing, pageMetadata } from "@/lib/server/content";
 import { contactDetails } from "@/lib/server/settings";
 import { listProducts } from "@/lib/server/catalog";
+import { makingTime, money } from "@/lib/format";
+import { newArrivals } from "@/lib/home/new-in";
+import { STARTING_POINTS } from "@/lib/studio/presets";
+
+const STUDIO_IMAGE = /^\/images\/studio\/([a-z]+)\.webp$/;
 
 export const generateMetadata = (): Promise<Metadata> => pageMetadata("/");
 
 export default async function HomePage() {
-  const [products, home, pricing, seo, tokens] = await Promise.all([listProducts(), getContent("home"), getPricing(), getContent("seo"), getAllTokens()]);
-  const { hero, categories, featured: spotlight, studio, about } = home;
-  const featured = products.filter((card) => card.featured && card.image.startsWith("/images/studio/")).slice(0, spotlight.limit);
+  const [products, home, pricing, seo, tokens, delivery] = await Promise.all([listProducts(), getContent("home"), getPricing(), getContent("seo"), getAllTokens(), getDelivery()]);
+  const { hero, categories, featured: spotlight, studio, about, story, shapes, leathers, making, paths } = home;
+  const storyProduct = products.find((card) => card.slug === story.slug);
+  const shapeCards: Shape[] = products.flatMap((card) => {
+    const preset = STUDIO_IMAGE.exec(card.image)?.[1];
+    const start = STARTING_POINTS.find((point) => point.key === preset);
+    if (!start || card.soldOut) return [];
+    return [{ slug: card.slug, name: card.name, image: card.image, hint: start.hint, price: money(card.priceCents) }];
+  });
+  const showShapes = shapes.visible && shapeCards.length > 0;
+  const featured = newArrivals(products, showShapes ? shapeCards.map((shape) => shape.slug) : [], spotlight.limit);
 
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(organizationData((await contactDetails()).email, seo.organizationDescription))} />
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(websiteData())} />
-      <Hero content={hero} pricing={pricing} />
+      <Hero content={hero} pricing={pricing} makingTime={makingTime(delivery)} />
 
       {categories.visible && categories.items.length ? (
         <section aria-label="Categories" className="px-page mt-14 grid grid-cols-2 gap-x-2 gap-y-8 md:mt-24 md:grid-cols-4 md:gap-x-4 md:gap-y-10">
@@ -36,7 +54,22 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {spotlight.visible ? (
+      {story.visible ? (
+        <Story
+          content={story}
+          pricing={pricing}
+          leathers={hero.leathers}
+          productName={storyProduct?.name ?? null}
+          intro={<Inline text={story.intro} tokens={tokens} />}
+          endBody={<Inline text={story.endBody} tokens={tokens} />}
+        />
+      ) : null}
+
+      {showShapes ? <Shapes content={shapes} body={<Inline text={shapes.body} tokens={tokens} />} shapes={shapeCards} /> : null}
+
+      {leathers.visible ? <Leathers content={leathers} body={<Inline text={leathers.body} tokens={tokens} />} studioSlug={story.slug} startColor={hero.leathers[0] ?? "cognac"} /> : null}
+
+      {spotlight.visible && featured.length ? (
         <section aria-labelledby="featured" className="px-page mt-16 md:mt-24">
           <div className="mb-5 flex items-center justify-between gap-6 md:mb-8 md:items-baseline">
             <h2 id="featured" className="font-display text-3xl md:text-4xl">{spotlight.heading}</h2>
@@ -49,6 +82,8 @@ export default async function HomePage() {
           </div>
         </section>
       ) : null}
+
+      {making.visible ? <Making content={making} tokens={tokens} /> : null}
 
       {studio.visible ? (
         <section aria-labelledby="studio" className="mt-16 grid bg-surface md:mt-24 md:grid-cols-2">
@@ -69,6 +104,8 @@ export default async function HomePage() {
           <p className="mt-4 leading-relaxed text-muted [&_a]:underline [&_a]:underline-offset-4"><Inline text={about.body} tokens={tokens} /></p>
         </section>
       ) : null}
+
+      {paths.visible ? <Paths content={paths} /> : null}
     </>
   );
 }

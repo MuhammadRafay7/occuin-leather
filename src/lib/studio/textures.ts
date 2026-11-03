@@ -1,15 +1,16 @@
 import * as THREE from "three";
 import { COLORS, FINISHES, THREADS, type DesignSpec, type FinishKey, type Hide } from "./spec";
 import { accentSeams, buildOutline, flapFrame, surfaceFrame, type OutlinePoint } from "./geometry";
+import { grainTileUrls } from "./grain-files";
 
 type Grain = (typeof FINISHES)[FinishKey]["grain"];
 
-const GRAIN_FILES: Record<Grain, { file: string; tileMm: number; normal: number; albedo: number; rough: number; ao: number }> = {
-  smooth: { file: "box", tileMm: 300, normal: 0.42, albedo: 0.32, rough: 0.28, ao: 0.25 },
-  pebble: { file: "pebble", tileMm: 360, normal: 1, albedo: 0.62, rough: 0.5, ao: 0.8 },
-  saffiano: { file: "saffiano", tileMm: 62, normal: 0.8, albedo: 0.55, rough: 0.5, ao: 0.6 },
-  croc: { file: "croc", tileMm: 200, normal: 1.2, albedo: 0.95, rough: 0.55, ao: 0.95 },
-  suede: { file: "suede", tileMm: 150, normal: 0.55, albedo: 0.9, rough: 0.2, ao: 0.4 },
+const GRAIN_LOOKS: Record<Grain, { tileMm: number; normal: number; albedo: number; rough: number; ao: number }> = {
+  smooth: { tileMm: 300, normal: 0.42, albedo: 0.32, rough: 0.28, ao: 0.25 },
+  pebble: { tileMm: 360, normal: 1, albedo: 0.62, rough: 0.5, ao: 0.8 },
+  saffiano: { tileMm: 62, normal: 0.8, albedo: 0.55, rough: 0.5, ao: 0.6 },
+  croc: { tileMm: 200, normal: 1.2, albedo: 0.95, rough: 0.55, ao: 0.95 },
+  suede: { tileMm: 150, normal: 0.55, albedo: 0.9, rough: 0.2, ao: 0.4 },
 };
 
 export type GrainTile = { normal: THREE.Texture; detail: THREE.Texture };
@@ -32,11 +33,8 @@ export function loadGrainTile(finish: FinishKey, suffix: string, anisotropy: num
   const key = `${finish}${suffix}`;
   const cached = tileCache.get(key);
   if (cached) return cached;
-  const { file } = GRAIN_FILES[FINISHES[finish].grain];
-  const pending = Promise.all([
-    loadMap(`/textures/${file}-normal${suffix}.webp`, anisotropy),
-    loadMap(`/textures/${file}-detail${suffix}.webp`, anisotropy),
-  ]).then(([normal, detail]) => ({ normal, detail }));
+  const urls = grainTileUrls(finish, suffix);
+  const pending = Promise.all([loadMap(urls.normal, anisotropy), loadMap(urls.detail, anisotropy)]).then(([normal, detail]) => ({ normal, detail }));
   pending.catch(() => tileCache.delete(key));
   tileCache.set(key, pending);
   return pending;
@@ -638,7 +636,7 @@ export function createLeather(): LeatherMaterial {
 
 function assignHide(leather: LeatherUniforms, slot: "A" | "B", hide: Hide, tile: GrainTile | null) {
   const finish = FINISHES[hide.finish];
-  const grain = GRAIN_FILES[finish.grain];
+  const grain = GRAIN_LOOKS[finish.grain];
   leather[`uTint${slot}`].value.set(COLORS[hide.color].hex);
   leather[`uSurface${slot}`].value.set(finish.roughness, finish.clearcoat, finish.sheen, grain.normal);
   leather[`uAmount${slot}`].value.set(grain.albedo, grain.rough, grain.ao, 1 / grain.tileMm);

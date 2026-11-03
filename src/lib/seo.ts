@@ -110,6 +110,10 @@ export const META: Record<string, PageMeta> = {
     title: "Design Your Own Leather Bag in 3D, Made to Order | OCCUIN",
     description: "Customise a leather bag in live 3D. Change the size, leather, stitching and hardware, add a monogram, see the price, and we make it to order.",
   },
+  "/find-your-bag": {
+    title: "Find Your Leather Bag: Five Questions, One Match | OCCUIN",
+    description: "Answer five quick questions and see the leather bag that suits how you carry, shown live in 3D in your leather, with its price and making time.",
+  },
   "/studio/create": {
     title: "Custom Leather Bag Designer: Draw Your Own | OCCUIN",
     description: "Draw your own leather piece on a pattern board, see it in 3D with a price estimate, and send it to our workshop for a final price by email.",

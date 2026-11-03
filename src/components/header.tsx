@@ -2,19 +2,21 @@ import Link from "next/link";
 import { getOwnerKey, getUser } from "@/lib/server/auth";
 import { getCart } from "@/lib/server/cart";
 import { listCategories } from "@/lib/server/catalog";
-import { getContent } from "@/lib/server/content";
-import { getSettings } from "@/lib/server/settings";
+import { getContent, getDelivery } from "@/lib/server/content";
+import { contactDetails, getSettings, paymentModeOf } from "@/lib/server/settings";
 import { categoryPath } from "@/lib/server/shop";
 import { BRAND } from "@/lib/format";
 import { AnnouncementBar } from "./announcement-bar";
 import { BagDrawer } from "./bag-drawer";
+import { BagReminder } from "./bag-reminder";
 import { HeaderMenu } from "./header-menu";
 import { LogoMark } from "./logo";
 import { NavLinks } from "./nav-links";
 
 export async function Header() {
   const [user, ownerKey] = await Promise.all([getUser(), getOwnerKey()]);
-  const [{ count }, women, men, { announcement, freeShippingCents }, nav] = await Promise.all([getCart(ownerKey), listCategories("women"), listCategories("men"), getSettings(), getContent("nav")]);
+  const [{ count }, women, men, settings, nav, delivery, contact] = await Promise.all([getCart(ownerKey), listCategories("women"), listCategories("men"), getSettings(), getContent("nav"), getDelivery(), contactDetails()]);
+  const payment = { whatsapp: paymentModeOf(settings) === "whatsapp", hasNumber: Boolean(contact.whatsapp) };
   const departments = {
     women: women.map((item) => ({ href: categoryPath("women", item.slug), label: item.name })),
     men: men.map((item) => ({ href: categoryPath("men", item.slug), label: item.name })),
@@ -29,7 +31,7 @@ export async function Header() {
 
   return (
     <>
-      <AnnouncementBar text={announcement} />
+      <AnnouncementBar text={settings.announcement} />
       <div className="sticky top-0 z-30 h-0">
         <header className="pl-[max(8px,env(safe-area-inset-left))] pr-[max(8px,env(safe-area-inset-right))] pt-[max(8px,env(safe-area-inset-top))] md:pl-[max(16px,env(safe-area-inset-left))] md:pr-[max(16px,env(safe-area-inset-right))] md:pt-[max(12px,env(safe-area-inset-top))]">
           <div className="glass grid h-14 grid-cols-[1fr_auto_1fr] items-center rounded-full px-5 md:px-4">
@@ -45,11 +47,12 @@ export async function Header() {
               <Link href="/search" className="hidden h-11 items-center hover:opacity-60 md:flex">Search</Link>
               <Link href={user ? "/account" : "/login"} className="hidden h-11 items-center hover:opacity-60 md:flex">{user ? "Account" : "Sign in"}</Link>
               <Link href="/wishlist" className="hidden h-11 items-center hover:opacity-60 md:flex">Saved</Link>
-              <BagDrawer count={count} freeShippingCents={freeShippingCents} />
+              <BagDrawer server={{ count }} freeShippingCents={settings.freeShippingCents} delivery={delivery} payment={payment} />
             </nav>
           </div>
         </header>
       </div>
+      <BagReminder count={count} />
     </>
   );
 }

@@ -722,7 +722,9 @@ export default function BespokeScene({ design, view, lookInside = false, capture
       gl={{ antialias: true, alpha: true, toneMapping: THREE.NeutralToneMapping, toneMappingExposure: 1, powerPreference: "high-performance" }}
       aria-label="Live three dimensional preview of your design"
       onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.());
+        gl.domElement.addEventListener("webglcontextlost", () => {
+          if (gl.domElement.isConnected) onContextLost?.();
+        });
       }}
     >
       <Workshop design={design} view={view} reduced={reduced} lookInside={lookInside} shotRef={shotRef} />

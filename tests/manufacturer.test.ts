@@ -205,6 +205,13 @@ describe("standard products", () => {
     expect(flatten(productSections(plain))).toContain("Not stored for this product");
   });
 
+  it("drops a stored recipe that belongs to another product", () => {
+    const satchel = { id: "p", slug: "slate-buckle-satchel", name: "Slate Buckle Satchel", description: "d", composition: "c", categorySlug: "x", images: ["/images/grey-satchel.jpg"], studioPreset: PRESETS.satchel };
+    const copy = productSnapshotOf(satchel, { sku: "SKU", color: "Slate", size: "One size" });
+    expect(copy.studioPreset).toBeNull();
+    expect(flatten(productSections(copy))).not.toContain("280 mm");
+  });
+
   it("keeps its copy when the catalogue changes later", () => {
     const product = { id: "p", slug: "s", name: "Before", description: "d", composition: "c", categorySlug: "x", images: ["/images/a.jpg"], studioPreset: null };
     const copy = productSnapshotOf(product, { sku: "SKU", color: "Noir", size: "M" });

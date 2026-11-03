@@ -1,6 +1,7 @@
 "use client";
 
 import type { DEFAULT_HOME } from "@/lib/content/defaults";
+import { STORY_STEPS } from "@/lib/home/story";
 import { Section } from "../../_components/ui";
 import { Advanced, Choice, ContentEditor, ImagePicker, ListEditor, Numeric, Place, RichText, Text, Toggle, type MediaOption } from "../_components/editor";
 
@@ -20,6 +21,11 @@ export function HomeEditor({ initial, fallback, media, presets, leathers, produc
                 <Text form={form} path="hero.lineOne" label="First line" hint="Short works best." />
                 <Text form={form} path="hero.lineTwo" label="Second line" hint="Short works best." />
                 <Text form={form} path="hero.ctaLabel" label="Button words" />
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Text form={form} path="hero.secondaryLabel" label="Second link words" />
+                <Place form={form} path="hero.secondaryHref" label="Second link goes to" />
+                <Text form={form} path="hero.cueLabel" label="Scroll hint words" hint="Shown on larger screens." />
               </div>
             </div>
           </Section>
@@ -60,7 +66,7 @@ export function HomeEditor({ initial, fallback, media, presets, leathers, produc
             </div>
           </Section>
 
-          <Section title="New in" description="Shows products marked as featured.">
+          <Section title="New in" description="Shows your newest products that are not already in Pick your shape. It hides itself when fewer than 2 are left.">
             <div className="adm-stack">
               <Toggle form={form} path="featured.visible" label="Show this on the home page" />
               <div className="grid gap-3 md:grid-cols-2">
@@ -83,6 +89,88 @@ export function HomeEditor({ initial, fallback, media, presets, leathers, produc
               </div>
               <ImagePicker form={form} path="studio.image" label="Picture" media={media} />
               <Text form={form} path="studio.imageAlt" label="Describe the picture" hint={PICTURE_HELP} />
+            </div>
+          </Section>
+
+          <Section title="Bag built step by step" description="The 3D bag that comes together as people scroll, ending with a button to make it.">
+            <div className="adm-stack">
+              <Toggle form={form} path="story.visible" label="Show this on the home page" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Choice form={form} path="story.preset" label="Bag shape shown" options={presets} />
+                <Choice form={form} path="story.slug" label="Product it opens" options={products} />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Text form={form} path="story.eyebrow" label="Small words above the title" />
+                <Text form={form} path="story.heading" label="Title" />
+              </div>
+              <RichText form={form} path="story.intro" label="Words under the title" rows={2} />
+              {STORY_STEPS.map((step, index) => (
+                <div key={step} className="grid gap-3 md:grid-cols-[1fr_2fr]">
+                  <Text form={form} path={`story.steps.${step}.title`} label={`Step ${index + 1} title`} />
+                  <Text form={form} path={`story.steps.${step}.body`} label={`Step ${index + 1} words`} rows={2} />
+                </div>
+              ))}
+              <Text form={form} path="story.endHeading" label="Last card title" />
+              <RichText form={form} path="story.endBody" label="Last card words" rows={2} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Text form={form} path="story.ctaLabel" label="Studio button words" />
+                <Text form={form} path="story.productLabel" label="Product button words" />
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Pick your shape" description="A row of every bag that opens in the studio, with its price.">
+            <div className="adm-stack">
+              <Toggle form={form} path="shapes.visible" label="Show this on the home page" />
+              <Text form={form} path="shapes.heading" label="Title" />
+              <RichText form={form} path="shapes.body" label="Words" rows={2} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Text form={form} path="shapes.linkLabel" label="Link words" />
+                <Place form={form} path="shapes.linkHref" label="Link goes to" />
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Leather close-up" description="A large leather sample people can light with a finger or cursor.">
+            <div className="adm-stack">
+              <Toggle form={form} path="leathers.visible" label="Show this on the home page" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Text form={form} path="leathers.eyebrow" label="Small words above the title" />
+                <Text form={form} path="leathers.heading" label="Title" />
+              </div>
+              <RichText form={form} path="leathers.body" label="Words" rows={2} />
+              <Text form={form} path="leathers.ctaLabel" label="Button words" hint="The colour name is added after these words." />
+            </div>
+          </Section>
+
+          <Section title="How your bag is made" description="Numbered steps from order to delivery. Live details such as making time stay up to date.">
+            <div className="adm-stack">
+              <Toggle form={form} path="making.visible" label="Show this on the home page" />
+              <Text form={form} path="making.heading" label="Title" />
+              <ListEditor form={form} path="making.steps" itemLabel="step" blank={{ title: "", body: "" }} max={6}>
+                {(prefix) => (
+                  <>
+                    <Text form={form} path={`${prefix}.title`} label="Step title" />
+                    <RichText form={form} path={`${prefix}.body`} label="Step words" rows={2} />
+                  </>
+                )}
+              </ListEditor>
+            </div>
+          </Section>
+
+          <Section title="Where to start" description="The closing row of links at the bottom of the page.">
+            <div className="adm-stack">
+              <Toggle form={form} path="paths.visible" label="Show this on the home page" />
+              <Text form={form} path="paths.heading" label="Title" />
+              <ListEditor form={form} path="paths.links" itemLabel="link" blank={{ label: "", href: "/shop/leather", note: "" }} max={6}>
+                {(prefix) => (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Text form={form} path={`${prefix}.label`} label="Link words" />
+                    <Place form={form} path={`${prefix}.href`} label="Goes to" />
+                    <Text form={form} path={`${prefix}.note`} label="Short note" />
+                  </div>
+                )}
+              </ListEditor>
             </div>
           </Section>
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { QuickAdd } from "@/components/product/quick-add";
 import { money } from "@/lib/format";
 import type { ProductCard } from "@/lib/server/catalog";
+import { QuickViewButton } from "./quick-view";
 import { cellClass, imageSizes, stageClass, type Placement } from "./rhythm";
 import styles from "./shop.module.css";
 
@@ -74,6 +75,11 @@ export function GlassCard({ product, placement, customisable, priority = false }
             <span className={iconOnly}>Customise</span>
           </Link>
         ) : null}
+        <QuickViewButton
+          slug={product.slug}
+          name={product.name}
+          className={`absolute right-2.5 top-2.5 z-10 grid size-8 place-items-center rounded-full border border-white/25 bg-[#0f211d]/55 text-[#f4efe6] transition-colors before:absolute before:-inset-2 hover:bg-[#0f211d]/85 focus-visible:outline-[#f4efe6] ${styles.reveal}`}
+        />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 p-3 pt-2 md:p-4 md:pt-2.5 lg:p-5 lg:pt-3">

@@ -5,25 +5,19 @@ import { z } from "zod";
 import { ensureOwnerKey, getOwnerKey, hitRateLimit } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/client-ip";
 import { addDesign, addVariant, setPromo, setQuantity } from "@/lib/server/cart";
+import { cartTooFast as tooFast } from "@/lib/server/cart-rate";
 
 const id = z.uuid();
 const refresh = () => revalidatePath("/", "layout");
 const TOO_FAST = "Too many changes. Try again in a minute.";
 const TOO_MANY_CODES = "Too many attempts. Try again in a few minutes.";
 
-async function tooFast(owner: string | null) {
-  const [byAddress, byOwner] = await Promise.all([hitRateLimit(`cart:ip:${await clientIp()}`, 120, 60), owner ? hitRateLimit(`cart:owner:${owner}`, 60, 60) : false]);
-  return byAddress || byOwner;
-}
-
 export async function addToBag(variantId: string) {
   const parsed = id.safeParse(variantId);
   if (!parsed.success) return { error: "Choose a size first." };
   const owner = await ensureOwnerKey();
   if (await tooFast(owner)) return { error: TOO_FAST };
-  const result = await addVariant(owner, parsed.data);
-  refresh();
-  return result;
+  return addVariant(owner, parsed.data);
 }
 
 export async function addDesignToBag(designId: string) {

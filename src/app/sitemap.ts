@@ -5,7 +5,7 @@ import { absoluteUrl } from "@/lib/seo";
 import { categoryPath } from "@/lib/server/shop";
 
 const CONTENT_UPDATED = new Date("2026-11-01");
-const PAGES = ["/studio", "/studio/create", "/about", "/care", "/shipping-returns", "/size-guide", "/faq", "/contact", "/privacy", "/terms"];
+const PAGES = ["/studio", "/studio/create", "/find-your-bag", "/about", "/care", "/shipping-returns", "/size-guide", "/faq", "/contact", "/privacy", "/terms"];
 
 const latest = (cards: { createdAt: Date }[]) => new Date(Math.max(...cards.map((card) => card.createdAt.getTime())));
 

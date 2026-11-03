@@ -1,4 +1,5 @@
 import type { BespokeDesign } from "../bespoke/design";
+import { studioModelOf } from "../studio/model-of";
 import type { DesignSpec } from "../studio/spec";
 
 export type ProductSnapshot = {
@@ -42,7 +43,7 @@ export const productSnapshotOf = (product: ProductSource, variant: VariantSource
   color: variant.color,
   size: variant.size,
   images: [...product.images],
-  studioPreset: product.studioPreset,
+  studioPreset: studioModelOf(product),
   frozenAt: now.toISOString(),
   ...(frozenLate ? { frozenLate } : {}),
 });
