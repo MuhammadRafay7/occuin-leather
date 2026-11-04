@@ -1,3 +1,4 @@
+import { Heart, MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { listCategories } from "@/lib/server/catalog";
 import { getContent, getDelivery } from "@/lib/server/content";
@@ -8,9 +9,11 @@ import { AccountLink } from "./account-link";
 import { AnnouncementBar } from "./announcement-bar";
 import { BagDrawer } from "./bag-drawer";
 import { BagReminder } from "./bag-reminder";
+import { LiquidSurface } from "./glass/liquid-surface";
 import { HeaderMenu } from "./header-menu";
 import { LogoMark } from "./logo";
 import { NavLinks } from "./nav-links";
+import { ICON_BUTTON } from "./nav-style";
 
 export async function Header() {
   const [women, men, settings, nav, delivery, contact] = await Promise.all([listCategories("women"), listCategories("men"), getSettings(), getContent("nav"), getDelivery(), contactDetails()]);
@@ -31,23 +34,28 @@ export async function Header() {
     <>
       <AnnouncementBar text={settings.announcement} />
       <div className="sticky top-0 z-30 h-0">
-        <header className="pl-[max(8px,env(safe-area-inset-left))] pr-[max(8px,env(safe-area-inset-right))] pt-[max(8px,env(safe-area-inset-top))] md:pl-[max(16px,env(safe-area-inset-left))] md:pr-[max(16px,env(safe-area-inset-right))] md:pt-[max(12px,env(safe-area-inset-top))]">
-          <div className="glass grid h-14 grid-cols-[1fr_auto_1fr] items-center rounded-full px-5 md:px-4">
-            <div className="flex items-center">
-              <HeaderMenu links={links} moreLinks={nav.mobileLinks} />
-              <NavLinks links={links} menus={menus} />
-            </div>
-            <Link href="/" aria-label={`${BRAND.name} home`} className="flex items-center gap-1.5 flex h-11 items-center font-display text-[24px] leading-none tracking-[0.14em] text-invert-bg md:text-[28px]">
-              <LogoMark className="size-8 shrink-0" />
+        <header className="flex items-start justify-between gap-2 pl-[max(8px,env(safe-area-inset-left))] pr-[max(8px,env(safe-area-inset-right))] pt-[max(8px,env(safe-area-inset-top))] md:pl-[max(16px,env(safe-area-inset-left))] md:pr-[max(16px,env(safe-area-inset-right))] md:pt-[max(12px,env(safe-area-inset-top))]">
+          <LiquidSurface adaptive className="flex h-14 min-w-0 items-center rounded-full pl-4 pr-4 md:pl-5 min-[1100px]:pr-2">
+            <Link href="/" aria-label={`${BRAND.name} home`} className="flex h-11 shrink-0 items-center gap-2 font-display text-[21px] leading-none tracking-[0.16em] text-[var(--ink-strong)] md:text-[23px]">
+              <LogoMark className="size-[26px] shrink-0" />
               {BRAND.name}
             </Link>
-            <nav aria-label="Account" className="flex items-center justify-end gap-5 pr-2 text-[13px] md:gap-6">
-              <Link href="/search" className="hidden h-11 items-center hover:opacity-60 md:flex">Search</Link>
-              <AccountLink className="hidden h-11 items-center hover:opacity-60 md:flex" />
-              <Link href="/wishlist" className="hidden h-11 items-center hover:opacity-60 md:flex">Saved</Link>
+            <span aria-hidden className="ml-5 mr-2 hidden h-5 w-px bg-[var(--rule)] min-[1100px]:block" />
+            <NavLinks links={links} menus={menus} />
+          </LiquidSurface>
+          <LiquidSurface adaptive className="flex h-14 shrink-0 items-center gap-0.5 rounded-full p-1.5">
+            <nav aria-label="Account" className="contents">
+              <Link href="/search" aria-label="Search" title="Search" className={`${ICON_BUTTON} max-[379px]:hidden`}>
+                <MagnifyingGlass size={19} weight="light" />
+              </Link>
+              <Link href="/wishlist" aria-label="Saved items" title="Saved items" className={`${ICON_BUTTON} hidden md:grid`}>
+                <Heart size={19} weight="light" />
+              </Link>
+              <AccountLink className={`${ICON_BUTTON} hidden md:grid`} />
               <BagDrawer freeShippingCents={settings.freeShippingCents} delivery={delivery} payment={payment} />
             </nav>
-          </div>
+            <HeaderMenu links={links} moreLinks={nav.mobileLinks} />
+          </LiquidSurface>
         </header>
       </div>
       <BagReminder />
