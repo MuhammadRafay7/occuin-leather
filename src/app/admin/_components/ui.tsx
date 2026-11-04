@@ -281,6 +281,29 @@ export function PageSkeleton() {
   );
 }
 
+export function FormSkeleton({ sections = 2 }: { sections?: number }) {
+  return (
+    <div role="status" aria-label="Loading">
+      <div className="adm-skeleton mb-2 h-8 w-64 max-w-full" />
+      <div className="adm-skeleton mb-6 h-4 w-96 max-w-full" />
+      <div className="adm-stack">
+        {Array.from({ length: sections }, (_, section) => (
+          <div key={section} className="adm-card grid gap-5 p-6">
+            <div className="adm-skeleton h-5 w-40" />
+            {[0, 1, 2].map((field) => (
+              <div key={field} className="grid gap-2">
+                <div className="adm-skeleton h-4 w-24" />
+                <div className="adm-skeleton h-10 w-full" />
+              </div>
+            ))}
+          </div>
+        ))}
+        <div className="adm-skeleton h-10 w-36" />
+      </div>
+    </div>
+  );
+}
+
 export function Notice({ result, compact = false }: { result: { ok: boolean; message: string } | null; compact?: boolean }) {
   if (!result) return null;
   const role = result.ok ? "status" : "alert";
