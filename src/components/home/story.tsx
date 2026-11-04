@@ -105,7 +105,8 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
   const active = useActiveStep(steps);
   const target = useMemo(() => recolor(PRESETS[content.preset], color), [content.preset, color]);
   const stage = Math.min(active, FINAL - 1);
-  const spec = useMemo(() => storyStage(target, stage), [target, stage]);
+  const stages = useMemo(() => STORY_STEPS.map((_, index) => storyStage(target, index)), [target]);
+  const spec = stages[stage]!;
   const { shown, dim, fresh } = useDip(spec, ready && !reduced);
   const stagePrice = quoteDesign(spec, pricing).totalCents;
   const finalPrice = quoteDesign(target, pricing).totalCents;
@@ -127,9 +128,10 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
             <Image src={poster} alt="" fill sizes="(min-width: 768px) 58vw, 100vw" className="object-contain p-6 md:p-16" />
           </div>
           {available && near ? (
-            <div className={`absolute inset-x-0 top-[4.5rem] touch-pan-y transition-[opacity,scale,filter] md:bottom-16 md:top-20 short:bottom-12 short:top-16 phone:bottom-[calc(13rem+var(--cookie-lift,0px))] ${!ready ? "opacity-0 duration-300" : dim ? "scale-[0.95] opacity-100 blur-[6px] duration-150 ease-in" : `scale-100 opacity-100 blur-none duration-500 ease-out ${fresh ? "delay-300" : ""}`}`}>
+            <div className={`absolute inset-x-0 top-[4.5rem] touch-pan-y transition-[opacity,scale] md:bottom-16 md:top-20 short:bottom-12 short:top-16 phone:bottom-[calc(13rem+var(--cookie-lift,0px))] ${!ready ? "opacity-0 duration-300" : dim ? "scale-[0.95] opacity-60 duration-150 ease-in" : `scale-100 opacity-100 duration-500 ease-out ${fresh ? "delay-300" : ""}`}`}>
               <Scene
                 spec={shown}
+                upcoming={stages}
                 spin
                 lite
                 paused={!visible}
