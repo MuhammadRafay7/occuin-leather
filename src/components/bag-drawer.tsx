@@ -237,9 +237,9 @@ export function BagDrawer({ freeShippingCents, delivery, payment }: Props) {
 
   return (
     <>
-      <Link href="/bag" onClick={openFromLink} className="-mx-2 flex h-11 items-center whitespace-nowrap px-2 hover:opacity-60">
-        <span>
-          Bag (
+      <Link href="/bag" onClick={openFromLink} aria-label={`Bag, ${liveCount} ${liveCount === 1 ? "item" : "items"}`} className="ml-1 flex h-11 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--cta-bg,var(--invert-bg))] pl-4 pr-1.5 text-[13px] font-medium text-[var(--cta-fg,var(--invert-fg))] transition-[background-color,color,opacity,transform] duration-300 hover:opacity-90 active:scale-[0.97]">
+        <span aria-hidden>Bag</span>
+        <span aria-hidden className="grid h-8 min-w-8 place-items-center rounded-full bg-[color-mix(in_srgb,currentColor_14%,transparent)] px-2">
           <motion.span
             key={bump}
             initial={bump && !reduceMotion ? { scale: 1.6 } : false}
@@ -249,7 +249,6 @@ export function BagDrawer({ freeShippingCents, delivery, payment }: Props) {
           >
             {liveCount}
           </motion.span>
-          )
         </span>
       </Link>
       <dialog
