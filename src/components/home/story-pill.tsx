@@ -23,6 +23,9 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
   const listId = useId();
   const total = titles.length;
   const progress = ((stage + 1) / total) * 100;
+  // On wide screens the list opens sideways as numbered chips; hovering one previews its name here.
+  const [preview, setPreview] = useState<number | null>(null);
+  const label = open && preview !== null ? preview : stage;
 
   useEffect(() => {
     if (!open) return;
@@ -42,6 +45,7 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
 
   const jump = (index: number) => {
     setOpen(false);
+    setPreview(null);
     onJump(index);
   };
 
@@ -60,7 +64,7 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
             <motion.div
               layout
               style={{ borderRadius: 26 }}
-              className="glass-panel overflow-hidden text-fg shadow-[0_18px_40px_-20px_rgb(0_0_0/0.6)]"
+              className="glass-panel overflow-hidden text-fg shadow-[0_18px_40px_-20px_rgb(0_0_0/0.6)] md:flex md:items-center short:flex short:items-center"
             >
               <motion.button
                 layout="position"
@@ -68,7 +72,7 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
                 aria-expanded={open}
                 aria-controls={listId}
                 onClick={() => setOpen(!open)}
-                className="flex min-h-11 items-center gap-2.5 py-1.5 pl-1.5 pr-3.5 text-[13px]"
+                className="flex min-h-11 shrink-0 items-center gap-2.5 py-1.5 pl-1.5 pr-3.5 text-[13px] md:w-[15.5rem] short:w-[15.5rem]"
               >
                 <span
                   aria-hidden
@@ -77,9 +81,9 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
                 >
                   <span className="absolute inset-[3px] grid place-items-center rounded-full bg-[#fafafa] text-[11px] font-medium tabular-nums">{stage + 1}</span>
                 </span>
-                <span className="whitespace-nowrap">
-                  <span className="font-medium">{titles[stage]}</span>
-                  <span className="text-muted tabular-nums"> · {stage + 1} of {total}</span>
+                <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">
+                  <span className="font-medium">{titles[label]}</span>
+                  <span className="text-muted tabular-nums"> · {label + 1} of {total}</span>
                 </span>
                 <motion.span aria-hidden animate={{ rotate: open ? 180 : 0 }}>
                   <CaretDown size={14} />
@@ -95,23 +99,27 @@ export function StoryPill({ shown, stage, titles, endLabel, onJump }: Props) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="grid min-w-60 gap-0.5 border-t border-[#14231f]/10 p-1.5"
+                    onMouseLeave={() => setPreview(null)}
+                    className="grid min-w-60 gap-0.5 border-t border-[#14231f]/10 p-1.5 md:flex md:min-w-0 md:items-center md:gap-1 md:border-l md:border-t-0 md:py-1 md:pl-2 md:pr-1.5 short:flex short:min-w-0 short:items-center short:gap-1 short:border-l short:border-t-0 short:py-1 short:pl-2 short:pr-1.5"
                   >
                     {titles.map((title, index) => (
                       <li key={title}>
                         <button
                           type="button"
                           aria-current={index === stage ? "step" : undefined}
+                          title={title}
                           onClick={() => jump(index)}
-                          className="flex min-h-10 w-full items-center gap-3 rounded-full px-3 text-left text-[13px] hover:bg-white/60 aria-[current=step]:bg-white/85"
+                          onMouseEnter={() => setPreview(index)}
+                          onFocus={() => setPreview(index)}
+                          className="flex min-h-10 w-full items-center gap-3 rounded-full px-3 text-left text-[13px] hover:bg-white/60 aria-[current=step]:bg-white/85 md:w-9 md:justify-center md:px-0 short:w-9 short:justify-center short:px-0"
                         >
-                          <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] tabular-nums ${index <= stage ? "bg-invert-bg text-invert-fg" : "bg-[#14231f]/10"}`}>{index + 1}</span>
-                          {title}
+                          <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] tabular-nums md:h-6 md:w-6 md:text-[11px] short:h-6 short:w-6 short:text-[11px] ${index <= stage ? "bg-invert-bg text-invert-fg" : "bg-[#14231f]/10"}`}>{index + 1}</span>
+                          <span className="md:sr-only short:sr-only">{title}</span>
                         </button>
                       </li>
                     ))}
                     <li>
-                      <button type="button" onClick={() => jump(total)} className="flex min-h-10 w-full items-center rounded-full px-3 text-left text-[13px] font-medium underline underline-offset-4 hover:bg-white/60">
+                      <button type="button" onClick={() => jump(total)} className="flex min-h-10 w-full items-center whitespace-nowrap rounded-full px-3 text-left text-[13px] font-medium underline underline-offset-4 hover:bg-white/60 md:ml-1">
                         {endLabel}
                       </button>
                     </li>
