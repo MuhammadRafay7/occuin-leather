@@ -161,7 +161,9 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
           ) : null}
 
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-6 hidden items-center justify-between gap-3 px-10 md:flex short:bottom-3 short:flex short:px-4">
-            <Progress stage={stage} finished={finished} />
+            <div className={`transition-opacity duration-300 ${inSteps && !finished ? "opacity-0" : "opacity-100"}`}>
+              <Progress stage={stage} finished={finished} />
+            </div>
             <PriceChip cents={finished ? finalPrice : stagePrice} />
           </div>
 
