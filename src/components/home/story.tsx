@@ -12,6 +12,7 @@ import { recolor, STORY_STEPS, storyStage } from "@/lib/home/story";
 import { PRESETS } from "@/lib/studio/presets";
 import { quoteDesign, type StudioPricing } from "@/lib/studio/pricing";
 import { COLORS, type ColorKey } from "@/lib/studio/spec";
+import { StoryPill } from "./story-pill";
 import { useNear } from "./use-near";
 
 const Scene = dynamic(() => import("@/components/studio/scene"), { ssr: false });
@@ -56,6 +57,18 @@ function useActiveStep(items: React.RefObject<(HTMLElement | null)[]>) {
   return active;
 }
 
+function useInSteps(list: React.RefObject<HTMLOListElement | null>) {
+  const [inside, setInside] = useState(false);
+  useEffect(() => {
+    const node = list.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => setInside(Boolean(entry?.isIntersecting)), { rootMargin: "0px 0px -50% 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [list]);
+  return inside;
+}
+
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -95,6 +108,7 @@ function useDip<T>(value: T, smooth: boolean) {
 export function Story({ content, pricing, leathers, productName, intro, endBody }: Props) {
   const section = useRef<HTMLElement>(null);
   const steps = useRef<(HTMLElement | null)[]>([]);
+  const list = useRef<HTMLOListElement>(null);
   const { near, visible, session } = useNear(section, "60% 0px");
   const { available, lost } = useWebgl();
   const [readySession, setReadySession] = useState(-1);
@@ -113,6 +127,8 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
   const finished = active >= FINAL;
   const studioHref = `/studio?from=${content.slug}${color ? `&color=${color}` : ""}`;
   const poster = `/images/studio/${content.preset}.webp`;
+  const inSteps = useInSteps(list);
+  const jump = (index: number) => steps.current[index]?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
 
   return (
     <section ref={section} id="story" aria-labelledby="story-heading" className="relative mt-16 bg-[linear-gradient(180deg,#0f211d_0%,#1b3730_30%,#20403a_70%,#0f211d_100%)] text-[#f4efe6] md:mt-24">
@@ -161,7 +177,7 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
           </div>
         </div>
 
-        <ol className="relative z-10 md:order-1 short:order-1 phone:-mt-[100svh]">
+        <ol ref={list} className="relative z-10 md:order-1 short:order-1 phone:-mt-[100svh]">
           {STORY_STEPS.map((step, index) => (
             <li
               key={step}
@@ -209,6 +225,14 @@ export function Story({ content, pricing, leathers, productName, intro, endBody 
           </li>
         </ol>
       </div>
+
+      <StoryPill
+        shown={inSteps && !finished}
+        stage={stage}
+        titles={STORY_STEPS.map((step) => content.steps[step].title)}
+        endLabel="Skip to the end"
+        onJump={jump}
+      />
     </section>
   );
 }

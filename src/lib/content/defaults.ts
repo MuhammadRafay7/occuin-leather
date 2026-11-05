@@ -41,7 +41,7 @@ export const DEFAULT_HOME = {
       { href: "/shop/women", name: "Women", image: "/images/studio/tote.webp", alt: "A leather tote bag for women" },
       { href: "/shop/men", name: "Men", image: "/images/studio/messenger.webp", alt: "A leather messenger bag for men" },
       { href: "/shop/leather/laptop-bags", name: "Laptop bags", image: "/images/studio/laptop.webp", alt: "A rigid leather laptop briefcase" },
-      { href: "/shop/leather/wallets", name: "Wallets and cards", image: "/images/brown-wallet.jpg", alt: "A brown leather wallet" },
+      { href: "/shop/leather/wallets", name: "Wallets and cards", image: "/images/studio/billfold.webp", alt: "A brown leather billfold wallet with contrast stitching" },
     ],
   },
   featured: { visible: true, heading: "New in", linkLabel: "View all", linkHref: "/shop/leather", limit: 4 },
@@ -107,6 +107,18 @@ export const DEFAULT_HOME = {
       { label: "Create your own", href: "/studio/create", note: "Start from a blank pattern" },
       { label: "Find your bag", href: "/find-your-bag", note: "Answer a few questions and we suggest a piece" },
     ],
+  },
+  faq: {
+    visible: true,
+    heading: "Questions before you order",
+    questions: [
+      "How long does delivery take?",
+      "How do custom orders work?",
+      "What leather do you use?",
+      "Can I return a piece I designed?",
+      "How should I look after leather?",
+    ],
+    linkLabel: "All questions",
   },
   about: {
     visible: true,
