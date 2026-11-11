@@ -1,5 +1,6 @@
 "use client";
 
+import { List, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -7,6 +8,9 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createPortal } from "react-dom";
 import { useFocusTrap, useScrollLock } from "@/components/glass/hooks";
 import { INSTANT, SHEET_SPRING } from "@/components/glass/motion";
+import { LogoMark } from "@/components/logo";
+import { ICON_BUTTON } from "@/components/nav-style";
+import { BRAND } from "@/lib/format";
 import { useVisitor } from "@/components/visitor";
 
 type NavItem = { href: string; label: string };
@@ -52,8 +56,8 @@ export function HeaderMenu({ links, moreLinks }: Props) {
 
   return (
     <>
-      <button type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(true)} className="-mx-2 h-11 px-2 text-[13px] hover:opacity-60 min-[1100px]:hidden">
-        Menu
+      <button type="button" aria-expanded={open} aria-haspopup="dialog" aria-label="Menu" onClick={() => setOpen(true)} className={`${ICON_BUTTON} min-[1100px]:hidden`}>
+        <List size={20} weight="light" />
       </button>
       {mounted
         ? createPortal(
@@ -70,9 +74,17 @@ export function HeaderMenu({ links, moreLinks }: Props) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: reduceMotion ? 0 : -12 }}
                   transition={reduceMotion ? INSTANT : SHEET_SPRING}
-                  className="glass-panel fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-[max(8px,env(safe-area-inset-left))] right-[max(8px,env(safe-area-inset-right))] top-[max(8px,env(safe-area-inset-top))] z-40 overflow-y-auto overscroll-contain rounded-[28px] !bg-bg/90 px-5 py-1.5 text-fg"
+                  className="glass-panel fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-[max(8px,env(safe-area-inset-left))] right-[max(8px,env(safe-area-inset-right))] top-[max(8px,env(safe-area-inset-top))] z-40 overflow-y-auto overscroll-contain rounded-[28px] !bg-bg/95 px-5 py-1.5 text-fg"
                 >
-                  <button type="button" onClick={close} className="-ml-2 h-11 px-2 text-[13px] hover:opacity-60">Close</button>
+                  <div className="-mr-3 flex h-14 items-center justify-between">
+                    <Link href="/" onClick={close} aria-label="Home" className="flex h-11 items-center gap-2 font-display text-[21px] leading-none tracking-[0.16em] text-invert-bg">
+                      <LogoMark className="size-[26px] shrink-0" />
+                      {BRAND.name}
+                    </Link>
+                    <button type="button" onClick={close} aria-label="Close menu" className={ICON_BUTTON}>
+                      <X size={20} weight="light" />
+                    </button>
+                  </div>
                   <nav aria-label="Mobile" className="mt-6 grid short:mt-1">
                     {links.map((item) => (
                       <Link key={item.href} href={item.href} onClick={close} className="flex min-h-14 items-center font-display text-4xl short:min-h-11 short:text-2xl">{item.label}</Link>
