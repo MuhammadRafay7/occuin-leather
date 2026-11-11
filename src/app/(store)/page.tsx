@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ProductCard } from "@/components/product-card";
+import { Categories } from "@/components/home/categories";
+import { HomeFaq } from "@/components/home/faq";
 import { Hero } from "@/components/home/hero";
 import { Leathers } from "@/components/home/leathers";
 import { Making } from "@/components/home/making";
@@ -23,8 +25,12 @@ const STUDIO_IMAGE = /^\/images\/studio\/([a-z]+)\.webp$/;
 export const generateMetadata = (): Promise<Metadata> => pageMetadata("/");
 
 export default async function HomePage() {
-  const [products, home, pricing, seo, tokens, delivery] = await Promise.all([listProducts(), getContent("home"), getPricing(), getContent("seo"), getAllTokens(), getDelivery()]);
-  const { hero, categories, featured: spotlight, studio, about, story, shapes, leathers, making, paths } = home;
+  const [products, home, pricing, seo, tokens, delivery, faqPage] = await Promise.all([listProducts(), getContent("home"), getPricing(), getContent("seo"), getAllTokens(), getDelivery(), getContent("page.faq")]);
+  const { hero, categories, featured: spotlight, studio, about, story, shapes, leathers, making, paths, faq } = home;
+  const faqItems = faq.questions.flatMap((question) => {
+    const item = faqPage.items.find((entry) => entry.question === question);
+    return item ? [{ question: item.question, answer: <Inline text={item.answer} tokens={tokens} /> }] : [];
+  });
   const storyProduct = products.find((card) => card.slug === story.slug);
   const shapeCards: Shape[] = products.flatMap((card) => {
     const preset = STUDIO_IMAGE.exec(card.image)?.[1];
@@ -41,18 +47,7 @@ export default async function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(websiteData())} />
       <Hero content={hero} pricing={pricing} makingTime={makingTime(delivery)} />
 
-      {categories.visible && categories.items.length ? (
-        <section aria-label="Categories" className="px-page mt-14 grid grid-cols-2 gap-x-2 gap-y-8 md:mt-24 md:grid-cols-4 md:gap-x-4 md:gap-y-10">
-          {categories.items.map((category) => (
-            <Link key={category.href} href={category.href} className="group block">
-              <div className="relative aspect-[4/5] overflow-hidden bg-surface">
-                <Image src={category.image} alt={category.alt} fill sizes="(min-width: 768px) 25vw, 50vw" unoptimized={category.image.startsWith("/api/")} className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
-              </div>
-              <h2 className="mt-3 text-sm">{category.name}</h2>
-            </Link>
-          ))}
-        </section>
-      ) : null}
+      {categories.visible && categories.items.length ? <Categories items={categories.items} /> : null}
 
       {story.visible ? (
         <Story
@@ -96,6 +91,8 @@ export default async function HomePage() {
           </div>
         </section>
       ) : null}
+
+      {faq.visible && faqItems.length ? <HomeFaq heading={faq.heading} linkLabel={faq.linkLabel} items={faqItems} /> : null}
 
       {about.visible ? (
         <section aria-labelledby="about-occuin" className="px-page mx-auto mt-16 max-w-[70ch] text-center md:mt-24">

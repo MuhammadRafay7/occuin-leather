@@ -163,6 +163,16 @@ const homeSchema = z.strictObject({
     links: z.array(z.strictObject({ label: text(30), href, note: optional(80) })).min(1, "Keep at least one link.").max(6, "There is room for 6 links.")
       .superRefine((links, context) => uniqueBy(links, context, "href", "This link is already in the list.")),
   }).default(DEFAULT_HOME.paths),
+  faq: z.strictObject({
+    visible: z.boolean(),
+    heading: text(80),
+    questions: z.array(text(300)).max(6, "There is room for 6 questions.")
+      .superRefine((questions, context) => {
+        const repeated = questions.findIndex((question, index) => questions.indexOf(question) !== index);
+        if (repeated >= 0) context.addIssue({ code: "custom", path: [repeated], message: "This question is already in the list." });
+      }),
+    linkLabel: text(30),
+  }).default(DEFAULT_HOME.faq),
 });
 
 const navSchema = z.strictObject({
