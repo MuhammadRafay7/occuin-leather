@@ -6,11 +6,11 @@ import { Section } from "../../_components/ui";
 import { Advanced, Choice, ContentEditor, ImagePicker, ListEditor, Numeric, Place, RichText, Text, Toggle, type MediaOption } from "../_components/editor";
 
 type Option = { value: string; label: string };
-type Props = { initial: typeof DEFAULT_HOME; fallback: typeof DEFAULT_HOME; media: MediaOption[]; presets: Option[]; leathers: Option[]; products: Option[] };
+type Props = { initial: typeof DEFAULT_HOME; fallback: typeof DEFAULT_HOME; media: MediaOption[]; presets: Option[]; leathers: Option[]; products: Option[]; questions: Option[] };
 
 const PICTURE_HELP = "Read aloud to people who cannot see it. Also helps Google.";
 
-export function HomeEditor({ initial, fallback, media, presets, leathers, products }: Props) {
+export function HomeEditor({ initial, fallback, media, presets, leathers, products, questions }: Props) {
   return (
     <ContentEditor contentKey="home" initial={initial} fallback={fallback} previewHref="/">
       {(form) => (
@@ -170,6 +170,19 @@ export function HomeEditor({ initial, fallback, media, presets, leathers, produc
                     <Text form={form} path={`${prefix}.note`} label="Short note" />
                   </div>
                 )}
+              </ListEditor>
+            </div>
+          </Section>
+
+          <Section title="Questions" description="A few questions from your Questions page, with their answers. Edit the answers on the Questions page.">
+            <div className="adm-stack">
+              <Toggle form={form} path="faq.visible" label="Show this on the home page" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <Text form={form} path="faq.heading" label="Title" />
+                <Text form={form} path="faq.linkLabel" label="Link to all questions" />
+              </div>
+              <ListEditor form={form} path="faq.questions" itemLabel="question" blank={questions[0]?.value ?? ""} max={6}>
+                {(prefix) => <Choice form={form} path={prefix} label="Question" options={questions} />}
               </ListEditor>
             </div>
           </Section>

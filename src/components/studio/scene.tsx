@@ -118,52 +118,123 @@ function colorDependentPaint(spec: DesignSpec) {
   return spec.surface.pattern === "none" ? null : [spec.panels.primary.color, spec.stitch.thread];
 }
 
-function useBagAssets(spec: DesignSpec, quality: Quality, reveal: boolean) {
+function shapeKeyOf(spec: DesignSpec, reveal: boolean, detail: number) {
+  const { form, carry, closure, stitch, hardware, panels, pocket } = spec;
+  return JSON.stringify([form, carry, closure, stitch.length, stitch.rows, hardware.feet, pocket, panels.layout, panels.divide, reveal, detail]);
+}
+
+function paintKeyOf(spec: DesignSpec, paint: number, fontEpoch: number) {
+  const { form, closure, stitch, panels, surface, monogram, edgeColor } = spec;
+  return JSON.stringify([
+    form, closure.type, closure.flapLength, closure.flapShape, stitch.rows, panels.layout, panels.divide, surface, monogram,
+    monogram.technique === "paint" ? edgeColor : null, colorDependentPaint(spec), paint, fontEpoch,
+  ]);
+}
+
+const NO_UPCOMING: DesignSpec[] = [];
+const PREFETCH_START_MS = 400;
+
+function whenIdle(task: () => void) {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(task, { timeout: 1500 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const timer = window.setTimeout(task, 120);
+  return () => window.clearTimeout(timer);
+}
+
+function prune<T>(cache: Map<string, T>, keep: Set<string>, dispose: (value: T) => void) {
+  for (const [key, value] of cache) {
+    if (keep.has(key)) continue;
+    cache.delete(key);
+    dispose(value);
+  }
+}
+
+// Builds and paints the bag for `spec`. Results are cached by key, and any `upcoming` specs are
+// prepared during idle time, so switching to one later is a swap instead of a main-thread stall.
+function useBagAssets(spec: DesignSpec, quality: Quality, reveal: boolean, upcoming: DesignSpec[] = NO_UPCOMING) {
   const [built, setBuilt] = useState<{ bag: BagGeometry; generation: number; key: string } | null>(null);
   const [painted, setPainted] = useState<{ surfaces: Surfaces; key: string } | null>(null);
   const specRef = useRef(spec);
   const hasPainted = useRef(false);
   const generation = useRef(0);
+  const [bags] = useState(() => new Map<string, BagGeometry>());
+  const [paints] = useState(() => new Map<string, Surfaces>());
   const fontEpoch = useFontEpoch(spec);
   useLayoutEffect(() => {
     specRef.current = spec;
   });
 
-  const { form, carry, closure, stitch, hardware, panels, surface, pocket, monogram, edgeColor } = spec;
-  const shapeKey = JSON.stringify([form, carry, closure, stitch.length, stitch.rows, hardware.feet, pocket, panels.layout, panels.divide, reveal, quality.detail]);
-  const paintKey = JSON.stringify([
-    form, closure.type, closure.flapLength, closure.flapShape, stitch.rows, panels.layout, panels.divide, surface, monogram,
-    monogram.technique === "paint" ? edgeColor : null, colorDependentPaint(spec), quality.paint, fontEpoch,
-  ]);
+  const shapeKey = shapeKeyOf(spec, reveal, quality.detail);
+  const paintKey = paintKeyOf(spec, quality.paint, fontEpoch);
+  const planned = useMemo(
+    () => upcoming.map((next) => ({ spec: next, shape: shapeKeyOf(next, reveal, quality.detail), paint: paintKeyOf(next, quality.paint, fontEpoch) })),
+    [upcoming, reveal, quality.detail, quality.paint, fontEpoch],
+  );
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      let bag = bags.get(shapeKey);
+      if (!bag) {
+        bag = buildBag(specRef.current, { open: reveal, detail: quality.detail });
+        bags.set(shapeKey, bag);
+      }
       generation.current += 1;
-      setBuilt({ bag: buildBag(specRef.current, { open: reveal, detail: quality.detail }), generation: generation.current, key: shapeKey });
+      setBuilt({ bag, generation: generation.current, key: shapeKey });
     });
     return () => cancelAnimationFrame(frame);
-  }, [shapeKey, reveal, quality.detail]);
+  }, [bags, shapeKey, reveal, quality.detail]);
 
   useEffect(() => {
+    const cached = paints.has(paintKey);
     const timer = window.setTimeout(() => {
       hasPainted.current = true;
-      setPainted({ surfaces: paintAll(specRef.current, quality), key: paintKey });
-    }, hasPainted.current ? PAINT_DELAY_MS : 0);
+      let surfaces = paints.get(paintKey);
+      if (!surfaces) {
+        surfaces = paintAll(specRef.current, quality);
+        paints.set(paintKey, surfaces);
+      }
+      setPainted({ surfaces, key: paintKey });
+    }, hasPainted.current && !cached ? PAINT_DELAY_MS : 0);
     return () => window.clearTimeout(timer);
-  }, [paintKey, quality]);
+  }, [paints, paintKey, quality]);
 
   const bag = built?.bag ?? null;
   const surfaces = painted?.surfaces ?? null;
+  const firstShown = Boolean(bag && surfaces);
 
   useEffect(() => {
-    if (!bag) return;
-    return () => disposeBag(bag);
-  }, [bag]);
+    if (!firstShown || !planned.length) return;
+    let cancel = () => {};
+    const step = () => {
+      const missing = planned.find((item) => !bags.has(item.shape) || !paints.has(item.paint));
+      if (!missing) return;
+      if (!bags.has(missing.shape)) bags.set(missing.shape, buildBag(missing.spec, { open: reveal, detail: quality.detail }));
+      else paints.set(missing.paint, paintAll(missing.spec, quality));
+      cancel = whenIdle(step);
+    };
+    const start = window.setTimeout(() => {
+      cancel = whenIdle(step);
+    }, PREFETCH_START_MS);
+    return () => {
+      window.clearTimeout(start);
+      cancel();
+    };
+  }, [firstShown, planned, bags, paints, reveal, quality]);
 
   useEffect(() => {
-    if (!surfaces) return;
-    return () => disposeSurfaces(surfaces);
-  }, [surfaces]);
+    prune(bags, new Set([shapeKey, ...(built ? [built.key] : []), ...planned.map((item) => item.shape)]), disposeBag);
+    prune(paints, new Set([paintKey, ...(painted ? [painted.key] : []), ...planned.map((item) => item.paint)]), disposeSurfaces);
+  }, [bags, paints, built, painted, shapeKey, paintKey, planned]);
+
+  useEffect(
+    () => () => {
+      prune(bags, new Set(), disposeBag);
+      prune(paints, new Set(), disposeSurfaces);
+    },
+    [bags, paints],
+  );
 
   const settled = built?.key === shapeKey && painted?.key === paintKey;
   return { bag, surfaces, generation: built?.generation ?? 0, settled };
@@ -1140,13 +1211,13 @@ function ShowcaseStage({ bag, kind, phone }: { bag: BagGeometry; kind: Showcase;
   );
 }
 
-function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, shotRef, showcase, fade, framing }: { spec: DesignSpec; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade: boolean; framing?: number }) {
+function Studio({ spec, upcoming, interactive, spin, paused, reduced, quality, onReady, shotRef, showcase, fade, framing }: { spec: DesignSpec; upcoming?: DesignSpec[]; interactive: boolean; spin: boolean; paused: boolean; reduced: boolean; quality: Quality; onReady?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade: boolean; framing?: number }) {
   const [forced, setForced] = useState<DesignSpec | null>(null);
   const active = forced ?? spec;
   const section = useStudio((state) => state.section);
   const reveal = interactive && !spin && section === "lining";
   const tier = forced ? STILL_QUALITY : quality;
-  const { bag, surfaces, generation, settled } = useBagAssets(active, tier, reveal);
+  const { bag, surfaces, generation, settled } = useBagAssets(active, tier, reveal, forced ? undefined : upcoming);
   const gl = useThree((state) => state.gl);
   const anisotropy = useMemo(() => {
     const max = gl.capabilities.getMaxAnisotropy();
@@ -1231,7 +1302,7 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
 
 const SLOW_FPS = 30;
 
-export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, onSlow, shotRef, showcase, fade = false, framing }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; onSlow?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade?: boolean; framing?: number }) {
+export default function Scene({ spec, upcoming, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, onSlow, shotRef, showcase, fade = false, framing }: { spec: DesignSpec; upcoming?: DesignSpec[]; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; onSlow?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade?: boolean; framing?: number }) {
   const [reduced, setReduced] = useState(false);
   const [settled, setSettled] = useState(false);
   const ready = useCallback(() => {
@@ -1267,7 +1338,7 @@ export default function Scene({ spec, interactive = true, spin = false, lite = f
         });
       }}
     >
-      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={ready} shotRef={shotRef} showcase={showcase} fade={fade} framing={framing} />
+      <Studio spec={spec} upcoming={upcoming} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={ready} shotRef={shotRef} showcase={showcase} fade={fade} framing={framing} />
       {onSlow && settled && !paused ? <PerformanceMonitor bounds={() => [SLOW_FPS, 1000]} onDecline={onSlow} /> : null}
     </Canvas>
   );
