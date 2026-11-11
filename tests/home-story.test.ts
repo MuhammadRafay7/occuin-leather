@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_HOME } from "@/lib/content/defaults";
 import { newArrivals } from "@/lib/home/new-in";
-import { recolor, STORY_STEPS, storyStage } from "@/lib/home/story";
+import { STORY_STEPS, storyStage } from "@/lib/home/story";
 import { CONTENT } from "@/lib/server/content";
 import { PRESETS } from "@/lib/studio/presets";
 import { designSpecSchema } from "@/lib/studio/spec";
@@ -37,14 +37,6 @@ describe("story stages", () => {
     for (const key of Object.keys(PRESETS) as (keyof typeof PRESETS)[]) {
       STORY_STEPS.forEach((_, stage) => expect(designSpecSchema.safeParse(storyStage(PRESETS[key], stage)).success).toBe(true));
     }
-  });
-
-  it("recolours the main panel and a matching gusset only", () => {
-    const tote = recolor(PRESETS.tote, "navy");
-    expect(tote.panels.primary.color).toBe("navy");
-    expect(tote.panels.gusset.color).toBe("navy");
-    const saddle = recolor(target, "navy");
-    expect(saddle.panels.gusset.color).toBe(target.panels.gusset.color);
   });
 });
 

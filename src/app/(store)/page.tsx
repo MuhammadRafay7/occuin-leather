@@ -58,7 +58,6 @@ export default async function HomePage() {
         <Story
           content={story}
           pricing={pricing}
-          leathers={hero.leathers}
           productName={storyProduct?.name ?? null}
           intro={<Inline text={story.intro} tokens={tokens} />}
           endBody={<Inline text={story.endBody} tokens={tokens} />}

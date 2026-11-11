@@ -4,6 +4,7 @@ import { ArrowsClockwise } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { Component, useEffect, useState, type ReactNode } from "react";
+import { isLowPowerDevice } from "@/lib/device";
 import type { DesignSpec } from "@/lib/studio/spec";
 import { PRESS } from "./controls";
 import { useStudio, type ViewName } from "./store";
@@ -51,21 +52,41 @@ class SceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode
   }
 }
 
-export function canUseWebgl() {
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
+
+function webglContext() {
   try {
     const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+    return canvas.getContext("webgl2") ?? canvas.getContext("webgl");
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function useWebgl() {
+export function canUseWebgl() {
+  return Boolean(webglContext());
+}
+
+function rendererName(gl: WebGLRenderingContext | WebGL2RenderingContext) {
+  const debug = gl.getExtension("WEBGL_debug_renderer_info");
+  return String(gl.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? "");
+}
+
+export function canAffordDecorativeWebgl() {
+  if (isLowPowerDevice()) return false;
+  const gl = webglContext();
+  if (!gl) return false;
+  const software = SOFTWARE_RENDERER.test(rendererName(gl));
+  gl.getExtension("WEBGL_lose_context")?.loseContext();
+  return !software;
+}
+
+export function useWebgl({ decorative = false }: { decorative?: boolean } = {}) {
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setAvailable(canUseWebgl()));
+    const frame = requestAnimationFrame(() => setAvailable(decorative ? canAffordDecorativeWebgl() : canUseWebgl()));
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [decorative]);
   return { available, lost: () => setAvailable(false) };
 }
 

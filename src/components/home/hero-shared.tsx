@@ -8,7 +8,6 @@ import { useTween } from "@/components/home/use-tween";
 import { useWebgl } from "@/components/studio/viewport";
 import type { Showcase } from "@/components/studio/scene";
 import { money } from "@/lib/format";
-import { grainTileUrls } from "@/lib/studio/grain-files";
 import { quoteDesign, type StudioPricing } from "@/lib/studio/pricing";
 import { lookHref, lookSpec, type HeroForm, type HeroLook } from "@/lib/home/hero-look";
 import { COLORS, type ColorKey, type DesignSpec } from "@/lib/studio/spec";
@@ -16,7 +15,6 @@ import { COLORS, type ColorKey, type DesignSpec } from "@/lib/studio/spec";
 export type { HeroForm, HeroLook };
 
 const loadScene = () => import("@/components/studio/scene");
-if (typeof window !== "undefined") void loadScene();
 const Scene = dynamic(loadScene, { ssr: false });
 
 const DIP_OUT_MS = 170;
@@ -24,33 +22,31 @@ const DIP_IN_MS = 320;
 
 export const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export function heroFiles(spec: DesignSpec) {
-  const { primary, gusset } = spec.panels;
-  const grains = [...new Set([primary.finish, gusset.finish])].flatMap((finish) => Object.values(grainTileUrls(finish, "-640")));
-  return [{ href: "/hdri/hero-env.hdr", as: "fetch" }, ...grains.map((href) => ({ href, as: "image" }))];
-}
-
 type Options = { section: RefObject<HTMLElement | null>; initialForm: HeroForm; initialColor: ColorKey; initialLook: HeroLook; pricing: StudioPricing };
 
 export function useHeroBag({ section, initialForm, initialColor, initialLook, pricing }: Options) {
   const [form, setForm] = useState(initialForm);
   const [color, setColor] = useState<ColorKey>(initialColor);
   const look = initialLook;
-  const [readySession, setReadySession] = useState(-1);
   const [shownOnce, setShownOnce] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [dip, setDip] = useState<"none" | "shape" | "leather">("none");
-  const { near, visible, session } = useNear(section, "50% 0px");
-  const ready = near && readySession === session;
+  const { near, visible } = useNear(section, "50% 0px");
+  const [mounted, setMounted] = useState(false);
+  if (near && revealed && !mounted) setMounted(true);
+  const ready = near && shownOnce;
   const pending = useRef<number[]>([]);
-  const webgl = useWebgl();
+  const webgl = useWebgl({ decorative: true });
   const spec = useMemo(() => lookSpec(form.key, color, look), [form, color, look]);
-  const firstSpec = useMemo(() => lookSpec(initialForm.key, initialColor, initialLook), [initialForm, initialColor, initialLook]);
   const price = quoteDesign(spec, pricing).totalCents;
   const shownPrice = useTween(price);
   const priceLabel = money(Math.round(shownPrice / 100) * 100);
 
   useEffect(() => () => pending.current.forEach((timer) => window.clearTimeout(timer)), []);
+
+  useEffect(() => {
+    if (webgl.available) void loadScene();
+  }, [webgl.available]);
 
   const switchTo = (kind: "shape" | "leather", apply: () => void) => {
     pending.current.forEach((timer) => window.clearTimeout(timer));
@@ -70,10 +66,10 @@ export function useHeroBag({ section, initialForm, initialColor, initialLook, pr
     look,
     setColor,
     spec,
-    firstSpec,
     price,
     priceLabel,
     near,
+    mounted,
     visible,
     ready,
     revealed,
@@ -83,10 +79,7 @@ export function useHeroBag({ section, initialForm, initialColor, initialLook, pr
     href: lookHref(form, color, look),
     pickForm: (next: HeroForm) => next.key !== form.key && switchTo("shape", () => setForm(next)),
     pickColor: (next: ColorKey) => next !== color && switchTo("leather", () => setColor(next)),
-    stage: { bagState, dip, onReady: () => {
-      setReadySession(session);
-      setShownOnce(true);
-    } },
+    stage: { bagState, dip, onReady: () => setShownOnce(true) },
   };
 }
 
@@ -96,20 +89,19 @@ type StageProps = { bag: HeroBag; fallbackImage: string; fallbackAlt: string; sh
 
 export function HeroStage({ bag, fallbackImage, fallbackAlt, showcase, framing, sizes }: StageProps) {
   const { available, lost } = bag.webgl;
+  const photo = available === false || !bag.shownOnce;
   return (
     <>
-      {available === false ? <Image src={fallbackImage} alt={fallbackAlt} fill sizes={sizes} unoptimized={fallbackImage.startsWith("/api/")} className="object-contain" /> : null}
-      {available && bag.near ? (
+      <div className={`absolute inset-0 transition-opacity duration-500 ${photo ? "opacity-100" : "opacity-0"}`}>
+        <Image src={fallbackImage} alt={photo ? fallbackAlt : ""} fill sizes={sizes} preload unoptimized={fallbackImage.startsWith("/api/")} className="object-contain" />
+      </div>
+      {available && bag.mounted ? (
         <div data-ready={bag.ready} className={`absolute inset-0 touch-pan-y transition-[opacity,scale] ease-out ${bag.stage.dip === "none" ? "duration-500" : "duration-150"} ${bag.stage.bagState}`}>
-          <Scene spec={bag.spec} spin lite paused={!bag.visible} showcase={showcase} framing={framing} onReady={bag.stage.onReady} onContextLost={lost} />
+          <Scene spec={bag.spec} spin lite paused={!bag.visible} showcase={showcase} framing={framing} onReady={bag.stage.onReady} onContextLost={lost} onSlow={lost} />
         </div>
       ) : null}
     </>
   );
-}
-
-export function HeroPreloads({ spec }: { spec: DesignSpec }) {
-  return heroFiles(spec).map((file) => <link key={file.href} rel="preload" href={file.href} as={file.as} crossOrigin="anonymous" />);
 }
 
 type FormPickerProps = { forms: HeroForm[]; value: HeroForm; onPick: (form: HeroForm) => void; className?: string; buttonClassName?: string };

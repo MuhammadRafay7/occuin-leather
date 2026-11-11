@@ -17,8 +17,18 @@ export type GrainTile = { normal: THREE.Texture; detail: THREE.Texture };
 
 const tileCache = new Map<string, Promise<GrainTile>>();
 
+async function decodeOffThread(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} ${url}`);
+  const bitmap = await createImageBitmap(await response.blob(), { imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
+  const texture = new THREE.Texture(bitmap);
+  texture.flipY = false;
+  return texture;
+}
+
 function loadMap(url: string, anisotropy: number) {
-  return new THREE.TextureLoader().loadAsync(url).then((texture) => {
+  const source = typeof createImageBitmap === "function" ? decodeOffThread(url) : new THREE.TextureLoader().loadAsync(url);
+  return source.then((texture) => {
     texture.colorSpace = THREE.NoColorSpace;
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     texture.anisotropy = anisotropy;

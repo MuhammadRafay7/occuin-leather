@@ -1,7 +1,9 @@
-import type { ColorKey, DesignSpec } from "../studio/spec";
+import type { DesignSpec } from "../studio/spec";
 
 export const STORY_STEPS = ["shape", "leather", "panels", "closure", "stitch", "carry"] as const;
 export type StoryStep = (typeof STORY_STEPS)[number];
+
+export const storyFrame = (index: number, step: StoryStep) => `/images/story/${index + 1}-${step}.webp`;
 
 export function storyStage(target: DesignSpec, stage: number): DesignSpec {
   const plain = { finish: "box", color: "ivory" } as const;
@@ -20,11 +22,4 @@ export function storyStage(target: DesignSpec, stage: number): DesignSpec {
     carry: reached("carry") ? target.carry : { ...target.carry, handles: 0, strap: false },
     monogram: reached("stitch") ? target.monogram : { ...target.monogram, text: "" },
   };
-}
-
-export function recolor(spec: DesignSpec, color: ColorKey | null): DesignSpec {
-  if (!color) return spec;
-  const { primary, gusset } = spec.panels;
-  const matched = gusset.color === primary.color;
-  return { ...spec, panels: { ...spec.panels, primary: { ...primary, color }, gusset: matched ? { ...gusset, color } : gusset } };
 }

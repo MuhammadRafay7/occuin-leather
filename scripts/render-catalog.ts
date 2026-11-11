@@ -5,12 +5,15 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import sharp from "sharp";
 import { PRESETS, STARTING_POINTS, type PresetKey } from "../src/lib/studio/presets";
 import { COLORS, type ColorKey, type DesignSpec } from "../src/lib/studio/spec";
+import { STORY_STEPS, storyFrame, storyStage } from "../src/lib/home/story";
+import { buildBag } from "../src/lib/studio/geometry";
 
 const BASE_URL = process.env.RENDER_URL ?? "http://localhost:3000";
 const STUDIO_DIR = path.join(process.cwd(), "public/images/studio");
 const HERO_DIR = path.join(process.cwd(), "public/images/hero");
 const FRAMES = Number(process.env.RENDER_FRAMES ?? 40);
 const CATALOG_SIZE = Number(process.env.CATALOG_SIZE ?? 1600);
+const STORY_SIZE = Number(process.env.STORY_SIZE ?? 1200);
 const HERO_SIZE = Number(process.env.HERO_SIZE ?? 2048);
 const MACRO_WIDTH = Number(process.env.MACRO_WIDTH ?? 2400);
 const MACRO_HEIGHT = Number(process.env.MACRO_HEIGHT ?? 1600);
@@ -37,7 +40,16 @@ type Still = {
   variants?: { name: string; hex: string }[];
 };
 
-type Job = { name: string; files: Record<string, string>; still: Still };
+type Job = { name: string; files: Record<string, string>; still: Still; feather?: number };
+
+async function featherEdges(image: Buffer, inset: number) {
+  const { width = 0, height = 0 } = await sharp(image).metadata();
+  const edge = Math.round(Math.min(width, height) * inset);
+  const mask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><filter id="f"><feGaussianBlur stdDeviation="${edge / 2}"/></filter><rect x="${edge}" y="${edge}" width="${width - edge * 2}" height="${height - edge * 2}" fill="#fff" filter="url(#f)"/></svg>`,
+  );
+  return sharp(image).ensureAlpha().composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
+}
 
 function dress(spec: DesignSpec, color: ColorKey): DesignSpec {
   const { primary, gusset } = spec.panels;
@@ -85,6 +97,27 @@ function macroJobs(): Job[] {
   ];
 }
 
+const STILL_FOV = 26;
+const STORY_FEATHER = 0.06;
+const STORY_FRAMING = 1.12;
+
+function storyJobs(): Job[] {
+  const target = PRESETS.crossbody;
+  const framing = STORY_FRAMING;
+  const finished = buildBag(target);
+  const distance = (finished.radius / Math.tan(((STILL_FOV / 2) * Math.PI) / 180)) * framing;
+  return STORY_STEPS.map((step, index) => {
+    const spec = storyStage(target, index);
+    const bag = buildBag(spec);
+    return {
+      name: `story-${step}`,
+      files: { still: path.join(process.cwd(), "public", storyFrame(index, step)) },
+      still: { spec, width: STORY_SIZE, height: STORY_SIZE, frames: FRAMES, distance, lift: (finished.centerY - bag.centerY) / bag.radius },
+      feather: STORY_FEATHER,
+    };
+  });
+}
+
 async function openPage(context: BrowserContext) {
   const page = await context.newPage();
   const tiles = process.env.MACRO_TILES;
@@ -110,7 +143,8 @@ async function renderJob(page: Page, job: Job) {
     if (!file) continue;
     const png = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, await sharp(png).webp({ quality: 90, alphaQuality: 95, effort: 5, smartSubsample: true }).toBuffer());
+    const finished = job.feather ? await featherEdges(png, job.feather) : png;
+    await writeFile(file, await sharp(finished).webp({ quality: 90, alphaQuality: 95, effort: 5, smartSubsample: true }).toBuffer());
     console.log(`wrote ${path.relative(process.cwd(), file)}`);
   }
   console.log(`rendered ${job.name} in ${Math.round((Date.now() - started) / 1000)}s`);
@@ -124,6 +158,7 @@ async function main() {
     ...(groups.includes("catalog") ? catalogJobs() : []),
     ...(groups.includes("hero") ? heroJobs() : []),
     ...(groups.includes("macro") ? macroJobs() : []),
+    ...(groups.includes("story") ? storyJobs() : []),
   ].filter((job) => !wanted.length || wanted.includes(job.name));
 
   const browser = await chromium.launch({

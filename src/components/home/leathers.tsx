@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { buttonClass } from "@/components/ui";
+import { isLowPowerDevice } from "@/lib/device";
 import type { DEFAULT_HOME } from "@/lib/content/defaults";
 import { decodeNormals, hexToLinear, relight, type Light, type NormalField } from "@/lib/home/relight";
 import { COLORS, FINISHES, type ColorKey, type FinishKey } from "@/lib/studio/spec";
@@ -91,7 +92,7 @@ export function Leathers({ content, body, studioSlug, startColor }: Props) {
 
   useEffect(() => {
     if (!visible || !field) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (isLowPowerDevice()) return;
     let frame = 0;
     let last = 0;
     const tick = (time: number) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ContactShadows, MeshReflectorMaterial, OrbitControls } from "@react-three/drei";
+import { ContactShadows, MeshReflectorMaterial, OrbitControls, PerformanceMonitor } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import * as THREE from "three";
@@ -592,14 +592,66 @@ function ReadySignal({ ready, onReady }: { ready: boolean; onReady?: () => void 
   return null;
 }
 
-function Invalidator({ spec, generation, surfaces, tiles, environment }: { spec: DesignSpec; generation: number; surfaces: Surfaces | null; tiles: Tiles; environment: unknown }) {
+function Invalidator({ spec, generation, surfaces, tiles, environment, warm }: { spec: DesignSpec; generation: number; surfaces: Surfaces | null; tiles: Tiles; environment: unknown; warm: boolean }) {
   const invalidate = useThree((state) => state.invalidate);
-  const gl = useThree((state) => state.gl);
+  const get = useThree((state) => state.get);
   useEffect(() => {
-    gl.shadowMap.needsUpdate = true;
+    get().gl.shadowMap.needsUpdate = true;
     invalidate();
-  }, [spec, gl, invalidate, generation, surfaces, tiles, environment]);
+  }, [spec, get, invalidate, generation, surfaces, tiles, environment, warm]);
   return null;
+}
+
+const nextTask = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+function sceneMaterials(scene: THREE.Scene) {
+  const materials = new Set<THREE.Material>();
+  scene.traverse((object) => {
+    const material = (object as THREE.Mesh).material;
+    if (!material) return;
+    for (const entry of Array.isArray(material) ? material : [material]) materials.add(entry);
+  });
+  return materials;
+}
+
+function compileOffscreen(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  const target = new THREE.WebGLRenderTarget(1, 1);
+  const previous = gl.getRenderTarget();
+  gl.setRenderTarget(target);
+  const compiled = gl.compileAsync(scene, camera);
+  gl.setRenderTarget(previous);
+  return compiled.finally(() => target.dispose());
+}
+
+async function warmScene(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, reflective: boolean, live: () => boolean) {
+  await Promise.all([gl.compileAsync(scene, camera), reflective ? compileOffscreen(gl, scene, camera) : null]);
+  for (const material of sceneMaterials(scene)) {
+    if (!live()) return;
+    (gl.properties.get(material) as { currentProgram?: THREE.WebGLProgram }).currentProgram?.getUniforms();
+    await nextTask();
+    for (const value of Object.values(material)) {
+      if (!(value instanceof THREE.Texture) || !live()) continue;
+      gl.initTexture(value);
+      await nextTask();
+    }
+  }
+}
+
+function useWarmShaders(ready: boolean, reflective: boolean) {
+  const get = useThree((state) => state.get);
+  const [warm, setWarm] = useState(false);
+  useEffect(() => {
+    if (!ready || warm) return;
+    let live = true;
+    const { gl, scene, camera } = get();
+    void warmScene(gl, scene, camera, reflective, () => live).then(() => {
+      if (live) setWarm(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ready, warm, reflective, get]);
+  return warm;
 }
 
 type StillOptions = {
@@ -1106,6 +1158,8 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
   const materials = useMaterials();
   const fadeColors = useColorFade(fade && !reduced);
   useDressedMaterials(materials, active, surfaces, tiles, fadeColors);
+  const assetsReady = Boolean(bag && surfaces && environment && loaded);
+  const warm = useWarmShaders(assetsReady, showcase === "plinth");
   const controls = useRef<OrbitHandle>(null);
   const autoRotate = useStudio((state) => state.autoRotate);
   const footprint = Math.max(active.form.width, active.form.depth) * UNIT_PER_MM;
@@ -1123,7 +1177,7 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
 
   return (
     <>
-      <Invalidator spec={active} generation={generation} surfaces={surfaces} tiles={tiles} environment={environment} />
+      <Invalidator spec={active} generation={generation} surfaces={surfaces} tiles={tiles} environment={environment} warm={warm} />
       {liveLights ? (
         <directionalLight
           position={[bag ? bag.radius * 1.4 : 3, bag ? bag.radius * 3 : 6, bag ? bag.radius * 2.2 : 4]}
@@ -1155,24 +1209,35 @@ function Studio({ spec, interactive, spin, paused, reduced, quality, onReady, sh
         autoRotateSpeed={spin ? (showcase ? SHOWCASE_SPIN : 1.1) : 0.7}
       />
       {bag ? <CameraRig bag={bag} controls={controls} reduced={reduced} reveal={reveal} controlStrip={!spin} framing={framing} opening={showcase ? SHOWCASE_ANGLES : undefined} /> : null}
-      {bag ? <Bag bag={bag} materials={materials} spec={active} fade={fadeColors} /> : null}
+      {bag ? (
+        <group visible={warm}>
+          <Bag bag={bag} materials={materials} spec={active} fade={fadeColors} />
+        </group>
+      ) : null}
       {liveLights && bag && showcase ? <ShowcaseStage bag={bag} kind={showcase} phone={quality.dpr[1] < 1.5} /> : null}
-      {liveLights && bag ? (
+      {liveLights && bag && warm ? (
         <>
           {showcase === "plinth" ? null : <ContactShadows key={`wide-${generation}`} frames={2} position={[0, groundY + 0.002, 0]} scale={Math.max(footprint * 3.4, 2)} far={Math.max(rise * 1.1, 0.6)} resolution={1024} blur={3.2} opacity={0.5} color="#1a130c" />}
           <ContactShadows key={`tight-${generation}`} frames={2} position={[0, groundY + 0.004, 0]} scale={Math.max(footprint * 2.2, 1.5)} far={Math.max(rise * 0.12, 0.08)} resolution={1024} blur={1.2} opacity={0.72} color="#120c07" />
         </>
       ) : null}
       <CaptureBridge bag={bag} />
-      <ShotBridge bag={bag} ready={Boolean(settled && loaded && environment)} shotRef={shotRef} />
-      <StillBridge forceSpec={setForced} settled={settled && loaded} bag={bag} environment={environment?.texture ?? null} materials={materials} />
-      <ReadySignal ready={Boolean(bag && surfaces && environment && loaded)} onReady={onReady} />
+      <ShotBridge bag={bag} ready={Boolean(settled && loaded && environment && warm)} shotRef={shotRef} />
+      <StillBridge forceSpec={setForced} settled={settled && loaded && warm} bag={bag} environment={environment?.texture ?? null} materials={materials} />
+      <ReadySignal ready={assetsReady && warm} onReady={onReady} />
     </>
   );
 }
 
-export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, shotRef, showcase, fade = false, framing }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade?: boolean; framing?: number }) {
+const SLOW_FPS = 30;
+
+export default function Scene({ spec, interactive = true, spin = false, lite = false, still = false, paused = false, onReady, onContextLost, onSlow, shotRef, showcase, fade = false, framing }: { spec: DesignSpec; interactive?: boolean; spin?: boolean; lite?: boolean; still?: boolean; paused?: boolean; onReady?: () => void; onContextLost?: () => void; onSlow?: () => void; shotRef?: RefObject<ShotTaker | null>; showcase?: Showcase; fade?: boolean; framing?: number }) {
   const [reduced, setReduced] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const ready = useCallback(() => {
+    setSettled(true);
+    onReady?.();
+  }, [onReady]);
   const [quality] = useState(() => (still ? STILL_QUALITY : lite ? liteQuality() : detectQuality()));
   const autoRotate = useStudio((state) => state.autoRotate);
 
@@ -1196,12 +1261,14 @@ export default function Scene({ spec, interactive = true, spin = false, lite = f
       aria-label="Live three dimensional preview of your design"
       onCreated={({ gl }) => {
         gl.shadowMap.autoUpdate = false;
+        gl.debug.checkShaderErrors = process.env.NODE_ENV !== "production";
         gl.domElement.addEventListener("webglcontextlost", () => {
           if (gl.domElement.isConnected) onContextLost?.();
         });
       }}
     >
-      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={onReady} shotRef={shotRef} showcase={showcase} fade={fade} framing={framing} />
+      <Studio spec={spec} interactive={interactive} spin={spin} paused={paused} reduced={reduced} quality={quality} onReady={ready} shotRef={shotRef} showcase={showcase} fade={fade} framing={framing} />
+      {onSlow && settled && !paused ? <PerformanceMonitor bounds={() => [SLOW_FPS, 1000]} onDecline={onSlow} /> : null}
     </Canvas>
   );
 }

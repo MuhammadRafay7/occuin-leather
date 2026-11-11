@@ -60,7 +60,7 @@ export const DEFAULT_HOME = {
     slug: "selle-22",
     eyebrow: "From hide to hand",
     heading: "One bag, step by step",
-    intro: "Scroll to build it. Every step is a choice you can change in the studio.",
+    intro: "Six choices make your bag. Every one of them can be changed in the studio.",
     steps: {
       shape: { title: "The shape", body: "It starts as a form. Set the width, height and depth, and the pattern is cut to your numbers." },
       leather: { title: "The leather", body: "Pick a finish and a colour: box calf, pebbled, saffiano, croc-embossed or suede." },
@@ -70,7 +70,7 @@ export const DEFAULT_HOME = {
       carry: { title: "The strap", body: "Handles, a shoulder strap or both, at the length you want." },
     },
     endHeading: "Make it yours",
-    endBody: "Try a colour here, then open it in the studio to change anything. Made to order in {{making_time}}.",
+    endBody: "Open it in the studio to change anything. Made to order in {{making_time}}.",
     ctaLabel: "Make yours",
     productLabel: "See this bag",
   },

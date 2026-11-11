@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef } from "react";
 import { ArrowRight } from "@phosphor-icons/react";
 import { Intro } from "@/components/home/intro";
-import { FormPicker, HeroPreloads, HeroStage, LeatherPicker, useHeroBag, type HeroForm, type HeroLook } from "@/components/home/hero-shared";
+import { FormPicker, HeroStage, LeatherPicker, useHeroBag, type HeroForm, type HeroLook } from "@/components/home/hero-shared";
 import { buttonClass } from "@/components/ui";
 import type { DEFAULT_HOME } from "@/lib/content/defaults";
 import { money } from "@/lib/format";
@@ -31,8 +31,7 @@ export function Hero({ content, pricing, makingTime }: Props) {
       data-revealed={bag.revealed}
       className="hero relative h-svh min-h-[540px] overflow-hidden bg-[radial-gradient(70%_60%_at_72%_46%,#3f6155_0%,#20403a_46%,#0c1c18_100%)] text-[#f4efe6] md:min-h-[640px] short:min-h-[360px]"
     >
-      <Intro ready={bag.shownOnce || bag.webgl.available === false} onDone={() => bag.setRevealed(true)} />
-      <HeroPreloads spec={bag.firstSpec} />
+      <Intro onDone={() => bag.setRevealed(true)} />
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_34%_at_72%_58%,rgb(255_214_168/0.10),transparent_70%)]" />
 
       <div className="relative mx-auto flex h-full max-w-[1440px] flex-col gap-3 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-[calc(4.5rem+env(safe-area-inset-top))] md:gap-6 md:px-8 md:pb-8 md:pt-24 lg:grid lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:gap-10 lg:px-12 lg:pb-10 short:grid short:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] short:items-center short:gap-5 short:px-[max(1.5rem,env(safe-area-inset-left))] short:pb-3 short:pt-[4.25rem]">

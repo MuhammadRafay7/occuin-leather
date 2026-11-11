@@ -50,6 +50,7 @@ html {
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   scroll-padding-top: calc(5rem + env(safe-area-inset-top));
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -300,13 +301,19 @@ textarea {
   }
 }
 
-.story-caption {
-  animation: story-caption 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+.spec-note {
+  animation: spec-note 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-@keyframes story-caption {
+@keyframes spec-note {
   from {
     opacity: 0;
-    translate: 0 8px;
+    translate: 0 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spec-note {
+    animation: none;
   }
 }
